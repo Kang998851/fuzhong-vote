@@ -14,11 +14,16 @@
   {% if me %}
   <form action="{{ url_for('confess_new') }}" method="post" class="form confess-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="kind-pills">
+      <label class="kind-pill"><input type="radio" name="kind" value="表白" checked> 💗 表白</label>
+      <label class="kind-pill"><input type="radio" name="kind" value="捞人"> 📢 捞人</label>
+    </div>
     <div class="form-row">
       <label style="flex:1">昵称（可选，留空为匿名）<input type="text" name="nickname" maxlength="20" placeholder="匿名"></label>
     </div>
+    <label>对象（必填）<input type="text" name="target" required maxlength="30" placeholder="比如：高二(3)班的小王"></label>
     <label>表白内容<textarea name="body" rows="3" required maxlength="500" placeholder="2-500 个字符，大胆说出你的心意"></textarea></label>
-    <button class="btn btn-primary" type="submit">发布表白</button>
+    <button class="btn btn-primary" type="submit">发布</button>
   </form>
   {% else %}
   <p class="dim"><a href="{{ url_for('login', next=request.path) }}">登录</a>后发布表白</p>
@@ -29,6 +34,10 @@
 <div class="confess-grid">
   {% for c in confesses %}
   <article class="card confess-card">
+    <div class="confess-head">
+      <span class="confess-badge">{{ c.kind or '表白' }}</span>
+      <b class="confess-target">{{ c.kind or '表白' }}{{ c.target }}</b>
+    </div>
     <p class="confess-body">{{ c.body }}</p>
     <div class="confess-meta">
       <span>— {{ c.nickname or '匿名' }}</span>

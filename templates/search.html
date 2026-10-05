@@ -32,7 +32,7 @@
   {% if confesses %}
   <ul class="mini-list">
     {% for c in confesses %}
-    <li><a href="{{ url_for('confess') }}">{{ c.body[:40] }}</a>
+    <li><a href="{{ url_for('confess') }}">{{ (c.kind or '表白') }}{{ c.target }}：{{ c.body[:40] }}</a>
       <span class="dim">{{ c.nickname or '匿名' }} · {{ c.created_at[:16] }}</span></li>
     {% endfor %}
   </ul>

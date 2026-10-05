@@ -97,9 +97,21 @@ def main():
 
     print("== 表白墙 ==")
     t = token(c, "/confess")
-    r = c.post("/confess/new", data={"nickname": "小测", "body": "测试表白内容啦啦",
+    r = c.post("/confess/new", data={"nickname": "小测", "kind": "表白",
+                                     "target": "高二(3)班小王",
+                                     "body": "测试表白内容啦啦",
                                      "csrf_token": t}, follow_redirects=True)
-    check("表白发布成功", "测试表白内容啦啦" in r.get_data(as_text=True))
+    body = r.get_data(as_text=True)
+    check("表白发布成功", "测试表白内容啦啦" in body)
+    check("表白XXX 格式显示", "表白高二(3)班小王" in body)
+    r = c.post("/confess/new", data={"kind": "捞人", "target": "食堂的长发女生",
+                                     "body": "今天中午食堂二楼，有认识的吗",
+                                     "csrf_token": t}, follow_redirects=True)
+    check("捞人发布成功", "捞人食堂的长发女生" in r.get_data(as_text=True))
+    r = c.post("/confess/new", data={"kind": "表白", "target": "",
+                                     "body": "没有对象的内容",
+                                     "csrf_token": t}, follow_redirects=True)
+    check("缺少对象被拒绝", "请填写表白对象" in r.get_data(as_text=True))
     r = c.post("/confess/1/like", data={"csrf_token": t}, follow_redirects=True)
     check("表白点赞成功", r.status_code == 200)
     r = c.post("/confess/1/like", data={"csrf_token": t},
@@ -164,6 +176,8 @@ def main():
     check("搜到帖子", "测试帖标题" in r.get_data(as_text=True))
     r = c.get("/search?q=表白内容")
     check("搜到表白", "测试表白内容啦啦" in r.get_data(as_text=True))
+    r = c.get("/search?q=小王")
+    check("按对象名搜到表白", "表白高二(3)班小王" in r.get_data(as_text=True))
     r = c.get("/search?q=候选人二号")
     check("搜到候选人", "候选人二号" in r.get_data(as_text=True))
     r = c.get("/search?q=不存在xyz")

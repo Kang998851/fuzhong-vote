@@ -146,9 +146,28 @@ a:hover{text-decoration:underline}
 /* ---- 表白墙 ---- */
 .confess-form{margin-top:14px}
 .confess-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
-.confess-card{display:flex;flex-direction:column;gap:10px}
+.confess-card{
+  display:flex;flex-direction:column;gap:10px;border:none;
+  background:linear-gradient(135deg,#ffe3ec 0%,#ffc9d9 100%);
+  color:#5c1f36;
+}
+.confess-card .dim{color:#96536e}
+.confess-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.confess-badge{
+  font-size:12px;font-weight:700;color:#fff;background:#e14b7a;
+  padding:3px 10px;border-radius:999px;white-space:nowrap;
+}
+.confess-target{font-size:17px}
 .confess-body{font-size:15px;white-space:pre-wrap}
 .confess-meta{display:flex;justify-content:space-between;font-size:13px}
+.kind-pills{display:flex;gap:10px}
+.kind-pill{
+  display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  padding:8px 16px;border:1px solid var(--border);border-radius:999px;
+  transition:border-color .2s var(--apple-ease),background .2s ease;
+}
+.kind-pill:has(input:checked){border-color:#e14b7a;background:rgba(225,75,122,.12);font-weight:700}
+.kind-pill input{accent-color:#e14b7a;margin:0}
 
 /* ---- 评选 ---- */
 .cand-list{list-style:none;display:flex;flex-direction:column;gap:12px;margin-top:14px}

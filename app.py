@@ -111,6 +111,8 @@ CREATE TABLE IF NOT EXISTS confessions(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     nickname TEXT NOT NULL DEFAULT '',
+    target TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL DEFAULT '表白',
     body TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -277,6 +279,19 @@ def init_db():
                          for r in db.execute("PRAGMA table_info(candidates)").fetchall())
         if not exists:
             db.execute(f"ALTER TABLE candidates ADD COLUMN {col} {ddl}")
+    # 存量库补列：表白墙加 target（表白对象）/ kind（表白/捞人）
+    for col, default in (("target", "''"), ("kind", "'表白'")):
+        if USE_PG:
+            exists = db.execute(
+                "SELECT 1 FROM information_schema.columns"
+                " WHERE table_name=? AND column_name=?",
+                ("confessions", col)).fetchone()
+        else:
+            exists = any(r["name"] == col
+                         for r in db.execute("PRAGMA table_info(confessions)").fetchall())
+        if not exists:
+            db.execute(f"ALTER TABLE confessions ADD COLUMN {col} TEXT")
+            db.execute(f"UPDATE confessions SET {col}={default} WHERE {col} IS NULL")
     row = db.execute("SELECT id FROM users WHERE username='admin'").fetchone()
     if not row:
         db.execute(
@@ -597,17 +612,23 @@ def confess():
 @login_required
 def confess_new():
     nickname = request.form.get("nickname", "").strip()[:20]
+    kind = request.form.get("kind", "表白").strip()
+    if kind not in ("表白", "捞人"):
+        kind = "表白"
+    target = request.form.get("target", "").strip()[:30]
     body = request.form.get("body", "").strip()
-    if len(body) < 2 or len(body) > 500:
+    if not (1 <= len(target) <= 30):
+        flash("请填写表白对象（1-30 个字）", "error")
+    elif len(body) < 2 or len(body) > 500:
         flash("表白内容需为 2-500 个字符", "error")
     else:
         db = get_db()
         db.execute(
-            "INSERT INTO confessions(user_id, nickname, body, created_at)"
-            " VALUES(?,?,?,?)",
-            (current_user()["id"], nickname, body, now_str()))
+            "INSERT INTO confessions(user_id, nickname, target, kind, body, created_at)"
+            " VALUES(?,?,?,?,?,?)",
+            (current_user()["id"], nickname, target, kind, body, now_str()))
         db.commit()
-        flash("表白发布成功", "ok")
+        flash("发布成功", "ok")
     return redirect(url_for("confess"))
 
 
@@ -699,7 +720,8 @@ def search():
             (like, like)).fetchall()
         confesses = db.execute(
             "SELECT * FROM confessions WHERE body LIKE ? OR nickname LIKE ?"
-            " ORDER BY id DESC LIMIT 20", (like, like)).fetchall()
+            " OR target LIKE ?"
+            " ORDER BY id DESC LIMIT 20", (like, like, like)).fetchall()
         candidates = db.execute(
             """SELECT c.id, c.board, c.name, c.class_name, c.slogan,
                (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
