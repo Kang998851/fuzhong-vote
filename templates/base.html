@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}附中墙{% endblock %} · 太原师范学院附属中学</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="icon" href="{{ url_for('static', filename='img/logo-mark.png') }}">
+</head>
+<body>
+<div class="app">
+  <!-- 移动端顶栏 -->
+  <header class="topbar">
+    <button class="hamburger" id="hamburger" aria-label="菜单">☰</button>
+    <span class="topbar-brand"><img src="{{ url_for('static', filename='img/logo-mark.png') }}" alt="校徽">附中墙</span>
+  </header>
+
+  <!-- 左侧边栏 -->
+  <aside class="sidebar" id="sidebar">
+    <div class="side-logo">
+      <img src="{{ url_for('static', filename='img/logo-mark.png') }}" alt="太原师范学院附属中学校徽">
+      <div>
+        <b>附中墙</b>
+        <small>太原师范学院附属中学 · 校园论坛</small>
+      </div>
+    </div>
+
+    <form class="side-search" action="{{ url_for('search') }}" method="get">
+      <span class="search-ico">⌕</span>
+      <input type="text" name="q" placeholder="搜索" value="{{ q|default('') }}">
+    </form>
+
+    <nav class="side-nav">
+      <a href="{{ url_for('index') }}" class="{{ 'active' if active_page=='index' else '' }}">
+        <span class="nav-ico">⌂</span>首页</a>
+      <a href="{{ url_for('forum') }}" class="{{ 'active' if active_page=='forum' else '' }}">
+        <span class="nav-ico">✎</span>论坛</a>
+      <a href="{{ url_for('confess') }}" class="{{ 'active' if active_page=='confess' else '' }}">
+        <span class="nav-ico">♡</span>表白墙</a>
+      <a href="{{ url_for('search') }}" class="{{ 'active' if active_page=='search' else '' }}">
+        <span class="nav-ico">⌕</span>搜索</a>
+      <a href="{{ url_for('vote') }}" class="{{ 'active' if active_page=='vote' else '' }}">
+        <span class="nav-ico">🏆</span>评选</a>
+      {% if me and me.is_admin %}
+      <a href="{{ url_for('admin') }}" class="{{ 'active' if active_page=='admin' else '' }}">
+        <span class="nav-ico">⚙</span>管理</a>
+      {% endif %}
+    </nav>
+
+    <div class="side-user">
+      {% if me %}
+      <div class="avatar">{{ me.username[0] }}</div>
+      <div class="uinfo"><b>{{ me.username }}</b><small class="ok-text">已登录</small></div>
+      <form action="{{ url_for('logout') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-xs" type="submit">退出</button>
+      </form>
+      {% else %}
+      <div class="uinfo"><b>访客</b><small>登录后参与互动</small></div>
+      <a class="btn btn-xs btn-primary" href="{{ url_for('login') }}">登录</a>
+      {% endif %}
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <!-- 内容区 -->
+  <main class="main">
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% if msgs %}
+      <div class="flashes">
+        {% for cat, msg in msgs %}
+        <div class="flash flash-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+
+    <footer class="footer">
+      <img src="{{ url_for('static', filename='img/logo-full.png') }}" alt="太原师范学院附属中学" class="footer-logo">
+      <p>附中墙 · 太原师范学院附属中学同学自建的校园小站</p>
+      <p class="dim">发帖请遵守校规，友善交流。有违规内容可以举报，管理员会处理。</p>
+    </footer>
+  </main>
+</div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

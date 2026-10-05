@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% set active_page = 'vote' %}
+{% block title %}报名参选{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <div class="card-label">/ SIGN UP</div>
+  <h2 class="card-title">报名参选</h2>
+  <p class="dim">提交后直接进入榜单，无需审核。</p>
+  <form method="post" enctype="multipart/form-data" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>榜单
+      <select name="board">
+        {% for code, label in boards %}<option value="{{ code }}">{{ label }}评选</option>{% endfor %}
+      </select>
+    </label>
+    <label>姓名<input type="text" name="name" required minlength="2" maxlength="20"></label>
+    <label>班级<input type="text" name="class_name" required maxlength="30" placeholder="如：高一(3)班"></label>
+    <label>参选宣言<textarea name="slogan" rows="3" required minlength="2" maxlength="100" placeholder="一句话介绍自己"></textarea></label>
+    <label>照片（必填，JPG/PNG/WebP，不超过 4MB）
+      <input type="file" name="photo" id="photo-input" accept=".jpg,.jpeg,.png,.webp" required>
+    </label>
+    <img id="photo-preview" class="photo-preview" alt="照片预览" style="display:none">
+    <button class="btn btn-primary" type="submit">提交报名</button>
+  </form>
+</section>
+{% endblock %}

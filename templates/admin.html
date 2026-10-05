@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% set active_page = 'admin' %}
+{% block title %}管理后台{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="card-label">/ ADMIN</div>
+  <h2 class="card-title">数据统计</h2>
+  <div class="stat-grid">
+    <div class="stat"><b>{{ stats.users }}</b><span>用户</span></div>
+    <div class="stat"><b>{{ stats.posts }}</b><span>帖子</span></div>
+    <div class="stat"><b>{{ stats.replies }}</b><span>回帖</span></div>
+    <div class="stat"><b>{{ stats.confesses }}</b><span>表白</span></div>
+    <div class="stat"><b>{{ stats.candidates }}</b><span>候选人</span></div>
+    <div class="stat"><b>{{ stats.votes }}</b><span>总票数</span></div>
+  </div>
+  {% for code, label in boards %}
+  {% if tops[code] %}
+  <h3 style="margin:16px 0 8px">{{ label }}榜 Top5</h3>
+  <ol class="mini-list">
+    {% for c in tops[code] %}
+    <li>{{ c.name }}（{{ c.class_name }}）<span class="dim">{{ c.votes }} 票</span>
+      <form action="{{ url_for('admin_delete', kind='candidate', oid=c.id) }}" method="post" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-xs" onclick="return confirm('确定删除该候选人？')">删除</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+  {% endfor %}
+</section>
+
+<section class="card">
+  <div class="card-label">/ ANNOUNCE</div>
+  <h2 class="card-title">发布公告</h2>
+  <form action="{{ url_for('admin_announce') }}" method="post" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>标题<input type="text" name="title" required maxlength="60"></label>
+    <label>内容<textarea name="body" rows="3" required></textarea></label>
+    <button class="btn btn-primary" type="submit">发布</button>
+  </form>
+  {% if announcements %}
+  <ul class="mini-list" style="margin-top:12px">
+    {% for a in announcements %}
+    <li><b>{{ a.title }}</b> <span class="dim">{{ a.created_at[:16] }}</span>
+      <form action="{{ url_for('admin_delete', kind='announcement', oid=a.id) }}" method="post" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-xs" onclick="return confirm('确定删除？')">删除</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}

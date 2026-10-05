@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% set active_page = 'forum' %}
+{% block title %}发帖{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <div class="card-label">/ NEW POST</div>
+  <h2 class="card-title">发表帖子</h2>
+  <form method="post" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>标题<input type="text" name="title" required minlength="2" maxlength="60" placeholder="2-60 个字符"></label>
+    <label>分类
+      <select name="category">
+        {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>正文<textarea name="body" rows="8" required placeholder="至少 5 个字符，友善交流"></textarea></label>
+    <button class="btn btn-primary" type="submit">发布</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% set active_page = 'index' %}
+{% block title %}首页{% endblock %}
+{% block content %}
+<div class="grid-3">
+  <!-- PROFILE -->
+  <section class="card">
+    <div class="card-label">/ PROFILE</div>
+    {% if me %}
+    <h2 class="card-title">你好，{{ me.username }}</h2>
+    <p class="dim">欢迎回到附中墙，去投票、发帖、表白吧。</p>
+    {% else %}
+    <h2 class="card-title">欢迎来到附中墙</h2>
+    <p class="dim">登录后即可发帖、点赞、表白与参与评选。</p>
+    {% endif %}
+    <div class="btn-col">
+      <a class="btn btn-outline" href="{{ url_for('vote') }}">去投票 <span>↗</span></a>
+      <a class="btn btn-primary" href="{{ url_for('vote_signup') }}">报名参选 <span>›</span></a>
+    </div>
+  </section>
+
+  <!-- QUICK START -->
+  <section class="card">
+    <div class="card-label">/ QUICK START</div>
+    <h2 class="card-title">快捷入口</h2>
+    <div class="quick-list">
+      <a href="{{ url_for('vote') }}">评选投票 <span>→</span></a>
+      <a href="{{ url_for('forum_new') }}">论坛发帖 <span>→</span></a>
+      <a href="{{ url_for('confess') }}">表白墙 <span>→</span></a>
+      <a href="{{ url_for('search') }}">全站搜索 <span>→</span></a>
+    </div>
+  </section>
+
+  <!-- VOTE -->
+  <section class="card card-vote">
+    <div class="card-label light">/ VOTE</div>
+    <p class="vote-sub">距离投票截止还有</p>
+    <div class="countdown" data-deadline="{{ deadline_iso }}">
+      <b>{{ cd_days }}</b> 天 <b>{{ cd_hours }}</b> 小时
+    </div>
+    <p class="vote-sub dim-light">截止至 {{ deadline_str }}</p>
+    <a class="btn btn-dark" href="{{ url_for('vote') }}">查看评选 <span>›</span></a>
+  </section>
+</div>
+
+<div class="grid-2">
+  <!-- NOTICE -->
+  <section class="card">
+    <div class="card-label">/ NOTICE</div>
+    <h2 class="card-title">站内公告</h2>
+    {% if announcements %}
+    <ul class="notice-list">
+      {% for a in announcements %}
+      <li><span class="dim">{{ a.created_at[:10] }}</span><b>{{ a.title }}</b><p class="dim">{{ a.body }}</p></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">暂无公告</div>
+    {% endif %}
+  </section>
+
+  <!-- COMMUNITY -->
+  <section class="card">
+    <div class="card-label">/ COMMUNITY</div>
+    <h2 class="card-title">校园社群</h2>
+    <p class="dim">关注校内公告，和同学们一起讨论学习、生活与活动。</p>
+    <div class="comm-tiles">
+      <div class="comm-tile"><b>论坛</b><span>按分类交流与回帖</span></div>
+      <div class="comm-tile"><b>表白墙</b><span>匿名或署名表达心意</span></div>
+    </div>
+    <a class="btn btn-outline" href="{{ url_for('forum') }}">进入校园论坛 <span>↗</span></a>
+  </section>
+</div>
+
+<div class="grid-3">
+  <section class="card">
+    <div class="card-label">/ FORUM</div>
+    <h2 class="card-title">最新帖子</h2>
+    {% if posts %}
+    <ul class="mini-list">
+      {% for p in posts %}
+      <li><a href="{{ url_for('forum_detail', pid=p.id) }}">{{ p.title }}</a>
+        <span class="dim">{{ p.username }} · {{ p.replies }} 回复</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">还没有帖子，<a href="{{ url_for('forum_new') }}">来发第一帖吧</a></div>
+    {% endif %}
+  </section>
+  <section class="card">
+    <div class="card-label">/ CONFESS</div>
+    <h2 class="card-title">最新表白</h2>
+    {% if confesses %}
+    <ul class="mini-list">
+      {% for c in confesses %}
+      <li><a href="{{ url_for('confess') }}">{{ c.body[:24] }}{% if c.body|length > 24 %}…{% endif %}</a>
+        <span class="dim">{{ c.nickname or '匿名' }} · ♥{{ c.likes }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">还没有表白，<a href="{{ url_for('confess') }}">来写下第一句吧</a></div>
+    {% endif %}
+  </section>
+  <section class="card">
+    <div class="card-label">/ RANK</div>
+    <h2 class="card-title">评选排行</h2>
+    {% set has_any = tops.xiaohua or tops.xiaocao or tops.mascot %}
+    {% if has_any %}
+      {% for code, label in boards %}
+        {% if tops[code] %}
+        <div class="rank-board"><b>{{ label }}</b>
+          <ol>
+            {% for c in tops[code] %}
+            <li>{{ c.name }} <span class="dim">{{ c.votes }} 票</span></li>
+            {% endfor %}
+          </ol>
+        </div>
+        {% endif %}
+      {% endfor %}
+    {% else %}
+    <div class="empty">暂无候选人，<a href="{{ url_for('vote_signup') }}">快来报名参选吧</a></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

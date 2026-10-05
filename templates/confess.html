@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% set active_page = 'confess' %}
+{% block title %}表白墙{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="card-label">/ CONFESS</div>
+  <div class="row-between">
+    <h2 class="card-title">表白墙</h2>
+    <div class="cat-tabs">
+      <a href="{{ url_for('confess', sort='new') }}" class="{{ 'active' if sort=='new' else '' }}">最新</a>
+      <a href="{{ url_for('confess', sort='hot') }}" class="{{ 'active' if sort=='hot' else '' }}">最热</a>
+    </div>
+  </div>
+  {% if me %}
+  <form action="{{ url_for('confess_new') }}" method="post" class="form confess-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <label style="flex:1">昵称（可选，留空为匿名）<input type="text" name="nickname" maxlength="20" placeholder="匿名"></label>
+    </div>
+    <label>表白内容<textarea name="body" rows="3" required maxlength="500" placeholder="2-500 个字符，大胆说出你的心意"></textarea></label>
+    <button class="btn btn-primary" type="submit">发布表白</button>
+  </form>
+  {% else %}
+  <p class="dim"><a href="{{ url_for('login', next=request.path) }}">登录</a>后发布表白</p>
+  {% endif %}
+</section>
+
+{% if confesses %}
+<div class="confess-grid">
+  {% for c in confesses %}
+  <article class="card confess-card">
+    <p class="confess-body">{{ c.body }}</p>
+    <div class="confess-meta">
+      <span>— {{ c.nickname or '匿名' }}</span>
+      <span class="dim">{{ c.created_at[:16] }}</span>
+    </div>
+    <form action="{{ url_for('confess_like', cid=c.id, sort=sort) }}" method="post" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-outline btn-sm" type="submit">{{ '♥' if c.id in liked_ids else '♡' }} {{ c.likes }}</button>
+    </form>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<section class="card"><div class="empty">还没有表白，来写下第一句吧</div></section>
+{% endif %}
+{% endblock %}

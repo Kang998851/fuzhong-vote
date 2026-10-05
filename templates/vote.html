@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% set active_page = 'vote' %}
+{% block title %}评选{% endblock %}
+{% block content %}
+<section class="card card-vote">
+  <div class="card-label light">/ VOTE</div>
+  <h2 class="card-title light">校园评选</h2>
+  <p class="vote-sub">每人每天每个榜单可投一票，当天可改投给别人</p>
+  <div class="countdown" data-deadline="{{ deadline_iso }}">
+    {% if vote_closed %}投票已截止{% else %}距离截止还有 <b>{{ cd_days }}</b> 天 <b>{{ cd_hours }}</b> 小时{% endif %}
+  </div>
+  <p class="vote-sub dim-light">截止至 {{ deadline_str }}</p>
+</section>
+
+<section class="card">
+  <div class="cat-tabs big">
+    {% for code, label in boards %}
+    <a href="{{ url_for('vote', board=code) }}" class="{{ 'active' if board==code else '' }}">{{ label }}评选</a>
+    {% endfor %}
+  </div>
+
+  {% if candidates %}
+  <ul class="cand-list">
+    {% for c in candidates %}
+    <li class="cand-row">
+      {% if c.photo %}
+      <img class="cand-photo" src="{{ url_for('uploaded_file', name=c.photo) }}" alt="{{ c.name }}">
+      {% else %}
+      <div class="cand-photo cand-ph">{{ c.name[0] }}</div>
+      {% endif %}
+      <div class="cand-info">
+        <b>{{ loop.index }}. {{ c.name }}</b>
+        <span class="dim">{{ c.class_name }}</span>
+        <p class="dim">{{ c.slogan }}</p>
+      </div>
+      <div class="cand-vote">
+        <b class="votes">{{ c.votes }} 票</b>
+        {% if not me %}
+        <a class="btn btn-outline btn-sm" href="{{ url_for('login', next=request.path) }}">登录投票</a>
+        {% elif vote_closed %}
+        <button class="btn btn-sm" disabled>已截止</button>
+        {% elif my_vote == c.id %}
+        <button class="btn btn-sm" disabled>已投票 ✓</button>
+        {% else %}
+        <form action="{{ url_for('vote_cast') }}" method="post" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="candidate_id" value="{{ c.id }}">
+          <button class="btn btn-primary btn-sm" type="submit">{{ '改投TA' if my_vote else '投TA一票' }}</button>
+        </form>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">暂无候选人，<a href="{{ url_for('vote_signup') }}">快来报名参选吧</a></div>
+  {% endif %}
+
+  <div class="center" style="margin-top:18px">
+    <a class="btn btn-outline" href="{{ url_for('vote_signup') }}">报名参选</a>
+  </div>
+</section>
+{% endblock %}

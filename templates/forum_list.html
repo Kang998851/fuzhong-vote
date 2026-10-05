@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% set active_page = 'forum' %}
+{% block title %}论坛{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="card-label">/ FORUM</div>
+  <div class="row-between">
+    <h2 class="card-title">校园论坛</h2>
+    <a class="btn btn-primary btn-sm" href="{{ url_for('forum_new') }}">＋ 发帖</a>
+  </div>
+  <div class="cat-tabs">
+    <a href="{{ url_for('forum', cat='全部') }}" class="{{ 'active' if cat=='全部' else '' }}">全部</a>
+    {% for c in categories %}
+    <a href="{{ url_for('forum', cat=c) }}" class="{{ 'active' if cat==c else '' }}">{{ c }}</a>
+    {% endfor %}
+  </div>
+  {% if posts %}
+  <ul class="post-list">
+    {% for p in posts %}
+    <li>
+      <a class="post-title" href="{{ url_for('forum_detail', pid=p.id) }}">{{ p.title }}</a>
+      <div class="post-meta">
+        <span class="tag">{{ p.category }}</span>
+        <span>{{ p.username }}</span>
+        <span class="dim">{{ p.created_at[:16] }}</span>
+        <span class="dim">{{ p.replies }} 回复 · ♥{{ p.likes }}</span>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">还没有帖子，<a href="{{ url_for('forum_new') }}">来发第一帖吧</a></div>
+  {% endif %}
+</section>
+{% endblock %}

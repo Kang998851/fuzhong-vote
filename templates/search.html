@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% set active_page = 'search' %}
+{% block title %}搜索{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="card-label">/ SEARCH</div>
+  <h2 class="card-title">全站搜索</h2>
+  <form action="{{ url_for('search') }}" method="get" class="search-big">
+    <input type="text" name="q" value="{{ q }}" placeholder="搜帖子、表白、候选人…" autofocus>
+    <button class="btn btn-primary" type="submit">搜索</button>
+  </form>
+</section>
+
+{% if q %}
+<section class="card">
+  <div class="card-label">/ POSTS</div>
+  <h2 class="card-title">论坛帖子（{{ posts|length }}）</h2>
+  {% if posts %}
+  <ul class="post-list">
+    {% for p in posts %}
+    <li><a class="post-title" href="{{ url_for('forum_detail', pid=p.id) }}">{{ p.title }}</a>
+      <div class="post-meta"><span class="tag">{{ p.category }}</span><span>{{ p.username }}</span>
+      <span class="dim">{{ p.created_at[:16] }}</span></div></li>
+    {% endfor %}
+  </ul>
+  {% else %}<div class="empty">没有找到相关帖子</div>{% endif %}
+</section>
+
+<section class="card">
+  <div class="card-label">/ CONFESSIONS</div>
+  <h2 class="card-title">表白（{{ confesses|length }}）</h2>
+  {% if confesses %}
+  <ul class="mini-list">
+    {% for c in confesses %}
+    <li><a href="{{ url_for('confess') }}">{{ c.body[:40] }}</a>
+      <span class="dim">{{ c.nickname or '匿名' }} · {{ c.created_at[:16] }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}<div class="empty">没有找到相关表白</div>{% endif %}
+</section>
+
+<section class="card">
+  <div class="card-label">/ CANDIDATES</div>
+  <h2 class="card-title">候选人（{{ candidates|length }}）</h2>
+  {% if candidates %}
+  <ul class="mini-list">
+    {% for c in candidates %}
+    <li><a href="{{ url_for('vote', board=c.board) }}">{{ c.name }}</a>
+      <span class="dim">{{ board_names[c.board] }} · {{ c.class_name }} · {{ c.votes }} 票</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}<div class="empty">没有找到相关候选人</div>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

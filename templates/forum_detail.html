@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% set active_page = 'forum' %}
+{% block title %}{{ post.title }}{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="card-label">/ FORUM</div>
+  <span class="tag">{{ post.category }}</span>
+  <h2 class="card-title">{{ post.title }}</h2>
+  <p class="dim">{{ post.username }} · {{ post.created_at[:16] }}</p>
+  <div class="post-body">{{ post.body }}</div>
+  <form action="{{ url_for('forum_like', pid=post.id) }}" method="post" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-outline btn-sm" type="submit">{{ '♥ 已赞' if liked else '♡ 点赞' }} {{ post.likes }}</button>
+  </form>
+</section>
+
+<section class="card">
+  <div class="card-label">/ REPLIES · {{ replies|length }}</div>
+  <h2 class="card-title">回帖</h2>
+  {% if replies %}
+  <ul class="reply-list">
+    {% for r in replies %}
+    <li><b>{{ r.username }}</b> <span class="dim">{{ r.created_at[:16] }}</span><p>{{ r.body }}</p></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">还没有回帖，来抢沙发吧</div>
+  {% endif %}
+  {% if me %}
+  <form action="{{ url_for('forum_reply', pid=post.id) }}" method="post" class="form" style="margin-top:16px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>发表回复<textarea name="body" rows="3" required placeholder="友善交流，遵守校规"></textarea></label>
+    <button class="btn btn-primary" type="submit">回复</button>
+  </form>
+  {% else %}
+  <p class="dim"><a href="{{ url_for('login', next=request.path) }}">登录</a>后参与回帖</p>
+  {% endif %}
+</section>
+{% endblock %}
