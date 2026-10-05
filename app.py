@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS candidates(
     photo TEXT NOT NULL,
     photo_data BYTEA,
     photo_mime TEXT,
+    extra_votes INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS votes(
@@ -347,6 +348,17 @@ def init_db():
     if not _exists:
         db.execute("ALTER TABLE polls ADD COLUMN is_closed INTEGER")
         db.execute("UPDATE polls SET is_closed=0 WHERE is_closed IS NULL")
+    # 存量库补列：候选人手动补票 extra_votes
+    if USE_PG:
+        _exists2 = db.execute(
+            "SELECT 1 FROM information_schema.columns"
+            " WHERE table_name=? AND column_name=?",
+            ("candidates", "extra_votes")).fetchone()
+    else:
+        _exists2 = any(r["name"] == "extra_votes"
+                       for r in db.execute("PRAGMA table_info(candidates)").fetchall())
+    if not _exists2:
+        db.execute("ALTER TABLE candidates ADD COLUMN extra_votes INTEGER NOT NULL DEFAULT 0")
     # 播种默认屏蔽词（已存在的跳过）
     for w in DEFAULT_BLOCKED_WORDS:
         if USE_PG:
@@ -519,7 +531,7 @@ def index():
     for code, _name in BOARDS:
         tops[code] = db.execute(
             """SELECT c.id, c.name, c.class_name,
-               (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
+               (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) + c.extra_votes AS votes
                FROM candidates c WHERE c.board=?
                ORDER BY votes DESC, c.id LIMIT 3""", (code,)).fetchall()
     me = current_user()
@@ -846,7 +858,7 @@ def search():
             " ORDER BY id DESC LIMIT 20", (like, like, like)).fetchall()
         candidates = db.execute(
             """SELECT c.id, c.board, c.name, c.class_name, c.slogan,
-               (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
+               (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) + c.extra_votes AS votes
                FROM candidates c
                WHERE c.name LIKE ? OR c.class_name LIKE ? OR c.slogan LIKE ?
                ORDER BY votes DESC, c.id LIMIT 20""",
@@ -860,7 +872,7 @@ def board_candidates(board):
     return get_db().execute(
         """SELECT c.id, c.user_id, c.board, c.name, c.class_name, c.slogan, c.created_at,
            (c.photo_data IS NOT NULL) AS has_photo,
-           (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
+           (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) + c.extra_votes AS votes
            FROM candidates c WHERE c.board=?
            ORDER BY votes DESC, c.id""", (board,)).fetchall()
 
@@ -1049,7 +1061,7 @@ def admin():
     }
     tops = {code: db.execute(
         """SELECT c.id, c.name, c.class_name,
-           (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
+           (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) + c.extra_votes AS votes
            FROM candidates c WHERE c.board=?
            ORDER BY votes DESC, c.id LIMIT 5""",
         (code,)).fetchall() for code, _ in BOARDS}

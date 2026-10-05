@@ -190,6 +190,14 @@ def main():
     d = r.get_json()
     check("AJAX 投票 JSON", d["ok"] and d["candidate_id"] == 1
           and d["changed"] is True and d["votes"] == 1)
+    # 手动补票：extra_votes 计入展示票数
+    import sqlite3 as _s3b
+    _dbb = _s3b.connect(os.path.join(tmp, "test.db"))
+    _dbb.execute("UPDATE candidates SET extra_votes=34 WHERE id=1")
+    _dbb.commit()
+    _dbb.close()
+    r = c.get("/vote?board=xiaohua")
+    check("补票后展示票数含 extra_votes", ">35</span>" in r.get_data(as_text=True))
 
     print("== 搜索 ==")
     r = c.get("/search?q=测试帖")
