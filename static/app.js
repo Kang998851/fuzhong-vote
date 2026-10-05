@@ -81,7 +81,7 @@
   }
 })();
 
-// 点赞 / 投票：无刷新提交 + 动画
+// 点赞 / 投票：无刷新提交 + Apple 风格动效
 (function () {
   function restart(el, cls) {
     el.classList.remove(cls);
@@ -89,53 +89,29 @@
     el.classList.add(cls);
   }
 
-  // 数字滚动
-  function animateCount(el, to, suffix) {
+  // 数字平滑滚动（easeOutExpo）
+  function animateCount(el, to) {
     var from = parseInt(el.textContent, 10) || 0;
     to = parseInt(to, 10) || 0;
-    suffix = suffix || '';
     if (from === to) { restart(el, 'bump'); return; }
-    var dur = 450, start = null;
+    var dur = 500, start = null;
     function step(ts) {
       if (!start) start = ts;
       var p = Math.min(1, (ts - start) / dur);
-      var eased = 1 - Math.pow(1 - p, 3);
-      el.textContent = Math.round(from + (to - from) * eased) + suffix;
+      var eased = p === 1 ? 1 : 1 - Math.pow(2, -10 * p);
+      el.textContent = Math.round(from + (to - from) * eased);
       if (p < 1) requestAnimationFrame(step);
       else restart(el, 'bump');
     }
     requestAnimationFrame(step);
   }
 
-  // 点赞时飘出小爱心
-  function burstHearts(btn) {
-    for (var i = 0; i < 5; i++) {
-      (function (i) {
-        var s = document.createElement('span');
-        s.className = 'float-heart';
-        s.textContent = '♥';
-        s.style.marginLeft = (Math.random() * 36 - 18) + 'px';
-        s.style.animationDelay = (i * 0.06) + 's';
-        btn.appendChild(s);
-        setTimeout(function () { s.remove(); }, 1000);
-      })(i);
-    }
-  }
-
-  // 投票成功撒花
-  function confetti(container) {
-    var colors = ['#e14b5a', '#f5b301', '#3fa7ff', '#3fae6a', '#b678ff'];
-    for (var i = 0; i < 16; i++) {
-      (function (i) {
-        var s = document.createElement('span');
-        s.className = 'confetti-bit';
-        s.style.background = colors[i % colors.length];
-        s.style.left = (18 + Math.random() * 64) + '%';
-        s.style.animationDelay = (Math.random() * 0.18) + 's';
-        container.appendChild(s);
-        setTimeout(function () { s.remove(); }, 1500);
-      })(i);
-    }
+  // 点按时的扩散圆环（触感反馈的视觉版）
+  function tapRing(el, green) {
+    var s = document.createElement('span');
+    s.className = 'tap-ring' + (green ? ' green' : '');
+    el.appendChild(s);
+    setTimeout(function () { s.remove(); }, 750);
   }
 
   // 通用：拦截表单走 fetch，失败时降级为整页提交
@@ -161,7 +137,7 @@
     });
   }
 
-  // 点赞
+  // 点赞：爱心弹簧 pop + 圆环扩散 + 数字滚动
   document.querySelectorAll('form.js-like').forEach(function (form) {
     ajaxify(form, function (data) {
       var btn = form.querySelector('.js-like-btn');
@@ -169,13 +145,15 @@
       var count = btn.querySelector('.like-count');
       heart.textContent = data.liked ? '♥' : '♡';
       btn.classList.toggle('is-liked', data.liked);
-      restart(btn, 'pop');
+      if (data.liked) {
+        restart(btn, 'pop');
+        tapRing(btn, false);
+      }
       animateCount(count, data.likes);
-      if (data.liked) burstHearts(btn);
     });
   });
 
-  // 投票
+  // 投票：卡片轻沉回弹 + 绿色圆环 + 票数滚动
   function paintVoteState(list, votedCid) {
     var castUrl = list.dataset.castUrl, csrf = list.dataset.csrf;
     list.querySelectorAll('[data-cid]').forEach(function (item) {
@@ -203,7 +181,7 @@
         var num = item.querySelector('.vote-num');
         if (num) animateCount(num, data.votes);
         restart(item, 'vote-flash');
-        confetti(item);
+        tapRing(item, true);
       }
     });
   }
