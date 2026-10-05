@@ -31,6 +31,22 @@
 </section>
 
 <section class="card">
+  <div class="card-label">/ USERS</div>
+  <h2 class="card-title">用户管理</h2>
+  <ul class="mini-list">
+    {% for u in users %}
+    <li>{{ u.username }}{% if u.is_admin %} <span class="dim">（管理员）</span>{% endif %}
+      <span class="dim">{{ u.created_at[:16] if u.created_at else '' }}</span>
+      <form action="{{ url_for('admin_reset_password', uid=u.id) }}" method="post" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-xs" onclick="return confirm('确定重置该用户的密码？将生成临时密码并显示一次。')">重置密码</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="card">
   <div class="card-label">/ ANNOUNCE</div>
   <h2 class="card-title">发布公告</h2>
   <form action="{{ url_for('admin_announce') }}" method="post" class="form">

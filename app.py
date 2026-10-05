@@ -713,8 +713,25 @@ def admin():
         (code,)).fetchall() for code, _ in BOARDS}
     announcements = db.execute(
         "SELECT * FROM announcements ORDER BY id DESC").fetchall()
+    users = db.execute(
+        "SELECT id, username, is_admin, created_at FROM users ORDER BY id").fetchall()
     return render_template("admin.html", stats=stats, tops=tops,
-                           announcements=announcements)
+                           announcements=announcements, users=users)
+
+
+@app.route("/admin/user/<int:uid>/reset-password", methods=["POST"])
+@admin_required
+def admin_reset_password(uid):
+    db = get_db()
+    row = db.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()
+    if not row:
+        abort(404)
+    temp = secrets.token_urlsafe(6)
+    db.execute("UPDATE users SET password_hash=? WHERE id=?",
+               (generate_password_hash(temp), uid))
+    db.commit()
+    flash(f"用户 {row['username']} 的密码已重置为：{temp}（请复制后立即告知对方，对方可用此密码登录）", "ok")
+    return redirect(url_for("admin"))
 
 
 @app.route("/admin/announce", methods=["POST"])
