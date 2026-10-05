@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS users(
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     is_admin INTEGER NOT NULL DEFAULT 0,
+    reg_ip TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS announcements(
@@ -154,8 +155,14 @@ CREATE TABLE IF NOT EXISTS votes(
     candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
     board TEXT NOT NULL,
     day TEXT NOT NULL,
+    ip TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     UNIQUE(user_id, board, day)
+);
+CREATE TABLE IF NOT EXISTS ip_geo(
+    ip TEXT PRIMARY KEY,
+    region TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS feedbacks(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -359,6 +366,18 @@ def init_db():
                        for r in db.execute("PRAGMA table_info(candidates)").fetchall())
     if not _exists2:
         db.execute("ALTER TABLE candidates ADD COLUMN extra_votes INTEGER NOT NULL DEFAULT 0")
+    # 存量库补列：记录注册 IP / 投票 IP（防刷票审计）
+    for _table, _col in (("users", "reg_ip"), ("votes", "ip")):
+        if USE_PG:
+            _ex = db.execute(
+                "SELECT 1 FROM information_schema.columns"
+                " WHERE table_name=? AND column_name=?",
+                (_table, _col)).fetchone()
+        else:
+            _ex = any(r["name"] == _col
+                      for r in db.execute(f"PRAGMA table_info({_table})").fetchall())
+        if not _ex:
+            db.execute(f"ALTER TABLE {_table} ADD COLUMN {_col} TEXT NOT NULL DEFAULT ''")
     # 播种默认屏蔽词（已存在的跳过）
     for w in DEFAULT_BLOCKED_WORDS:
         if USE_PG:
@@ -395,6 +414,73 @@ def login_required(view):
 def wants_json():
     """前端 fetch 动画请求：带 X-Requested-With 头时返回 JSON 而非整页跳转。"""
     return request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+
+def client_ip():
+    """代理后的真实客户端 IP（Render 经 X-Forwarded-For 透传）。"""
+    fwd = request.headers.get("X-Forwarded-For", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return (request.remote_addr or "").strip()
+
+
+def ip_region(ip, refresh=False):
+    """IP 属地解析：本地缓存 → 在线接口 → 降级为"未知"。绝不抛异常、
+    绝不在页面渲染热路径中调在线接口（渲染只读缓存）。"""
+    import ipaddress
+    if not ip:
+        return ""
+    region = None
+    try:
+        _ipa = ipaddress.ip_address(ip)
+        if _ipa.is_private or _ipa.is_loopback:
+            region = "内网"
+    except ValueError:
+        return "未知"
+    db = get_db()
+    if not refresh:
+        r = db.execute("SELECT region FROM ip_geo WHERE ip=?", (ip,)).fetchone()
+        if r:
+            return r["region"]
+    if region is None:
+        region = "未知"
+        try:
+            import urllib.request
+            import json as _json
+            req = urllib.request.Request(
+                "http://ip-api.com/json/%s?fields=status,country,regionName&lang=zh-CN" % ip,
+                headers={"User-Agent": "fuzhong-wall"})
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                data = _json.loads(resp.read().decode("utf-8", "ignore"))
+            if data.get("status") == "success":
+                country, prov = data.get("country") or "", data.get("regionName") or ""
+                region = prov if country in ("中国", "China") and prov else (country or "海外")
+        except Exception:
+            pass
+    try:
+        if USE_PG:
+            db.execute("INSERT INTO ip_geo(ip, region, updated_at) VALUES(?,?,?)"
+                       " ON CONFLICT(ip) DO UPDATE SET region=EXCLUDED.region,"
+                       " updated_at=EXCLUDED.updated_at",
+                       (ip, region, now_str()))
+        else:
+            db.execute("INSERT OR REPLACE INTO ip_geo(ip, region, updated_at)"
+                       " VALUES(?,?,?)", (ip, region, now_str()))
+        db.commit()
+    except Exception:
+        pass
+    return region
+
+
+def cached_region(ip):
+    """只读缓存，供页面渲染热路径使用（不触发在线解析）。"""
+    if not ip:
+        return ""
+    try:
+        r = get_db().execute("SELECT region FROM ip_geo WHERE ip=?", (ip,)).fetchone()
+        return r["region"] if r else ""
+    except Exception:
+        return ""
 
 
 def admin_required(view):
@@ -480,9 +566,12 @@ def register():
             if db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone():
                 flash("用户名已存在", "error")
             else:
+                ip = client_ip()
+                ip_region(ip)  # 注册时解析属地并缓存（失败则记"未知"，不阻塞注册）
                 cur = db.execute(
-                    "INSERT INTO users(username, password_hash, created_at) VALUES(?,?,?)",
-                    (username, generate_password_hash(password), now_str()))
+                    "INSERT INTO users(username, password_hash, reg_ip, created_at)"
+                    " VALUES(?,?,?,?)",
+                    (username, generate_password_hash(password), ip, now_str()))
                 db.commit()
                 session["user_id"] = cur.lastrowid
                 flash(f"欢迎，{username}！", "ok")
@@ -608,14 +697,18 @@ def forum_detail(pid):
     db = get_db()
     post = db.execute(
         """SELECT p.*, u.username,
-                  (SELECT COUNT(*) FROM post_likes l WHERE l.post_id=p.id) AS likes
-           FROM forum_posts p JOIN users u ON u.id=p.user_id WHERE p.id=?""",
+                  (SELECT COUNT(*) FROM post_likes l WHERE l.post_id=p.id) AS likes,
+                  g.region AS author_region
+           FROM forum_posts p JOIN users u ON u.id=p.user_id
+           LEFT JOIN ip_geo g ON g.ip=u.reg_ip WHERE p.id=?""",
         (pid,)).fetchone()
     if not post:
         abort(404)
     replies = db.execute(
-        """SELECT r.*, u.username FROM forum_replies r
-           JOIN users u ON u.id=r.user_id WHERE r.post_id=? ORDER BY r.id""",
+        """SELECT r.*, u.username, g.region AS author_region FROM forum_replies r
+           JOIN users u ON u.id=r.user_id
+           LEFT JOIN ip_geo g ON g.ip=u.reg_ip
+           WHERE r.post_id=? ORDER BY r.id""",
         (pid,)).fetchall()
     liked = False
     me = current_user()
@@ -681,8 +774,10 @@ def confess():
     order = ("likes DESC, c.id DESC") if sort == "hot" else "c.id DESC"
     confesses = db.execute(
         f"""SELECT c.*, (SELECT COUNT(*) FROM confession_likes l
-                        WHERE l.confession_id=c.id) AS likes
-            FROM confessions c ORDER BY {order}""").fetchall()
+                        WHERE l.confession_id=c.id) AS likes,
+                    g.region AS author_region
+            FROM confessions c LEFT JOIN users u ON u.id=c.user_id
+            LEFT JOIN ip_geo g ON g.ip=u.reg_ip ORDER BY {order}""").fetchall()
     liked_ids = set()
     me = current_user()
     if me:
@@ -691,7 +786,9 @@ def confess():
             (me["id"],))}
     comments = {}
     for r in db.execute(
-            "SELECT * FROM confession_comments ORDER BY id").fetchall():
+            """SELECT cc.*, g.region AS author_region FROM confession_comments cc
+               LEFT JOIN users u ON u.id=cc.user_id
+               LEFT JOIN ip_geo g ON g.ip=u.reg_ip ORDER BY cc.id""").fetchall():
         comments.setdefault(r["confession_id"], []).append(r)
     return render_template("confess.html", confesses=confesses, sort=sort,
                            liked_ids=liked_ids, comments=comments,
@@ -919,9 +1016,9 @@ def vote_cast():
     db.execute("DELETE FROM votes WHERE user_id=? AND board=? AND day=?",
                (me["id"], cand["board"], day))
     db.execute(
-        "INSERT INTO votes(user_id, candidate_id, board, day, created_at)"
-        " VALUES(?,?,?,?,?)",
-        (me["id"], cid, cand["board"], day, now_str()))
+        "INSERT INTO votes(user_id, candidate_id, board, day, ip, created_at)"
+        " VALUES(?,?,?,?,?,?)",
+        (me["id"], cid, cand["board"], day, client_ip(), now_str()))
     db.commit()
     changed = bool(old and old["candidate_id"] != cid)
     if wants_json():
@@ -1081,10 +1178,59 @@ def admin():
         "SELECT COUNT(*) c FROM feedbacks WHERE status=0").fetchone()["c"]
     blocked_words = db.execute(
         "SELECT * FROM blocked_words ORDER BY id").fetchall()
+    # IP 审计：同 IP 注册账号聚类（防刷票）。校园网可能共用出口 IP，
+    # 因此只列出多账号 IP，并标出 24 小时内集中注册 ≥3 个的可疑项。
+    _votes_ip = {r["ip"]: r["c"] for r in db.execute(
+        "SELECT ip, COUNT(*) c FROM votes WHERE ip<>'' GROUP BY ip").fetchall()}
+    _groups = {}
+    for u in db.execute(
+            "SELECT id, username, is_admin, reg_ip, created_at FROM users"
+            " WHERE reg_ip<>'' ORDER BY reg_ip, id").fetchall():
+        _groups.setdefault(u["reg_ip"], []).append(u)
+    ip_audit = []
+    for ip, accs in _groups.items():
+        if len(accs) < 2:
+            continue
+        try:
+            times = sorted(datetime.strptime(a["created_at"], "%Y-%m-%d %H:%M:%S")
+                           for a in accs)
+            burst = max(sum(1 for t in times
+                            if (t - times[i]).total_seconds() <= 86400)
+                        for i in range(len(times)))
+        except Exception:
+            burst = len(accs)
+        ip_audit.append({"ip": ip, "region": cached_region(ip),
+                         "accounts": accs, "burst": burst,
+                         "votes": _votes_ip.get(ip, 0),
+                         "suspicious": burst >= 3})
+    ip_audit.sort(key=lambda x: (not x["suspicious"], -x["burst"],
+                                 -len(x["accounts"])))
+    ip_audit = ip_audit[:30]
     return render_template("admin.html", stats=stats, tops=tops,
                            announcements=announcements, users=users,
                            feedbacks=feedbacks, type_names=FEEDBACK_TYPE_NAMES,
-                           blocked_words=blocked_words)
+                           blocked_words=blocked_words, ip_audit=ip_audit)
+
+
+@app.route("/admin/purge-votes/<int:uid>", methods=["POST"])
+@admin_required
+def admin_purge_votes(uid):
+    """清除某账号的全部投票（账号保留）。"""
+    db = get_db()
+    n = db.execute("SELECT COUNT(*) c FROM votes WHERE user_id=?", (uid,)).fetchone()["c"]
+    db.execute("DELETE FROM votes WHERE user_id=?", (uid,))
+    db.commit()
+    flash(f"已清除该账号 {n} 张投票", "ok")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/refresh-geo/<path:ip>", methods=["POST"])
+@admin_required
+def admin_refresh_geo(ip):
+    """手动刷新某 IP 的属地解析。"""
+    ip_region(ip, refresh=True)
+    flash("属地已刷新", "ok")
+    return redirect(url_for("admin"))
 
 
 @app.route("/admin/blocked-words", methods=["POST"])

@@ -41,7 +41,7 @@
     <p class="confess-body">{{ c.body }}</p>
     <div class="confess-meta">
       <span>— {{ c.nickname or '匿名' }}</span>
-      <span class="dim">{{ c.created_at[:16] }}</span>
+      <span class="dim">{{ c.created_at[:16] }}{% if c.author_region %} · IP属地 {{ c.author_region }}{% endif %}</span>
     </div>
     <div class="confess-actions">
       <form action="{{ url_for('confess_like', cid=c.id, sort=sort) }}" method="post" class="inline-form js-like">
@@ -54,7 +54,7 @@
     <div class="confess-comments" id="cmt-{{ c.id }}" hidden>
       <ul class="cmt-list" data-cmt-list>
         {% for m in clist %}
-        <li class="cmt"><b>{{ m.nickname or '匿名' }}</b><span>{{ m.body }}</span>
+        <li class="cmt"><b>{{ m.nickname or '匿名' }}</b><span>{{ m.body }}</span>{% if m.author_region %} <span class="dim">IP属地 {{ m.author_region }}</span>{% endif %}
           {% if is_admin %}
           <form action="{{ url_for('admin_delete', kind='comment', oid=m.id) }}" method="post" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

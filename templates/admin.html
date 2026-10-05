@@ -52,6 +52,42 @@
 </section>
 
 <section class="card">
+  <div class="card-label">/ IP AUDIT</div>
+  <h2 class="card-title">IP 审计（防刷票）</h2>
+  <p class="dim">只列出注册了 ≥2 个账号的 IP。校园网可能共用出口 IP，请结合"24h 内集中注册数"判断，红色为可疑。清票仅删除该账号的投票，账号保留。</p>
+  {% if ip_audit %}
+  <ul class="mini-list">
+    {% for g in ip_audit %}
+    <li{% if g.suspicious %} style="border-left:3px solid #c0392b;padding-left:8px"{% endif %}>
+      <b>{{ g.ip }}</b>
+      <span class="dim">属地 {{ g.region or '未知' }}</span>
+      <span class="dim">{{ g.accounts|length }} 个账号 / {{ g.votes }} 票</span>
+      {% if g.suspicious %}<b style="color:#c0392b">24h 内集中注册 {{ g.burst }} 个</b>{% endif %}
+      <form action="{{ url_for('admin_refresh_geo', ip=g.ip) }}" method="post" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-xs">刷新属地</button>
+      </form>
+      <ul class="dim">
+        {% for a in g.accounts %}
+        <li>{{ a.username }}{% if a.is_admin %}（管理员）{% endif %} · 注册 {{ a.created_at[:16] if a.created_at else '' }}
+          {% if not a.is_admin %}
+          <form action="{{ url_for('admin_purge_votes', uid=a.id) }}" method="post" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-xs" onclick="return confirm('确定清除 {{ a.username }} 的全部投票？')">清票</button>
+          </form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="dim">暂无多账号共用 IP。</p>
+  {% endif %}
+</section>
+
+<section class="card">
   <div class="card-label">/ FEEDBACK</div>
   <h2 class="card-title">意见反馈</h2>
   {% if feedbacks %}

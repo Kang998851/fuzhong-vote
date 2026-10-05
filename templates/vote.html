@@ -6,6 +6,7 @@
   <div class="card-label light">/ VOTE</div>
   <h2 class="card-title light">校园评选</h2>
   <p class="vote-sub">每人每天每个榜单可投一票，当天可改投给别人</p>
+  <p class="vote-sub dim-light">投票将记录 IP 及属地，刷票行为将被清理</p>
   <div class="countdown" data-deadline="{{ deadline_iso }}">
     {% if vote_closed %}投票已截止{% else %}距离截止还有 <b>{{ cd_days }}</b> 天 <b>{{ cd_hours }}</b> 小时{% endif %}
   </div>

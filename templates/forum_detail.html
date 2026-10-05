@@ -6,7 +6,7 @@
   <div class="card-label">/ FORUM</div>
   <span class="tag">{{ post.category }}</span>
   <h2 class="card-title">{{ post.title }}</h2>
-  <p class="dim">{{ post.username }} · {{ post.created_at[:16] }}</p>
+  <p class="dim">{{ post.username }} · {{ post.created_at[:16] }}{% if post.author_region %} · IP属地 {{ post.author_region }}{% endif %}</p>
   <div class="post-body">{{ post.body }}</div>
   <form action="{{ url_for('forum_like', pid=post.id) }}" method="post" class="inline-form js-like">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -20,7 +20,7 @@
   {% if replies %}
   <ul class="reply-list">
     {% for r in replies %}
-    <li><b>{{ r.username }}</b> <span class="dim">{{ r.created_at[:16] }}</span><p>{{ r.body }}</p></li>
+    <li><b>{{ r.username }}</b> <span class="dim">{{ r.created_at[:16] }}{% if r.author_region %} · IP属地 {{ r.author_region }}{% endif %}</span><p>{{ r.body }}</p></li>
     {% endfor %}
   </ul>
   {% else %}

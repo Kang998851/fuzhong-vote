@@ -6,6 +6,7 @@
 import io
 import os
 import re
+import sqlite3
 import sys
 import tempfile
 
@@ -61,6 +62,13 @@ def main():
     r = c.post("/login", data={"username": "tester", "password": "pw123456",
                                "csrf_token": t}, follow_redirects=True)
     check("登录成功", "欢迎回来" in r.get_data(as_text=True))
+    # 注册 IP 已记录，属地已解析缓存（127.0.0.1 → 内网，不调外网）
+    _dbb = sqlite3.connect(os.path.join(tmp, "test.db"))
+    _u = _dbb.execute("SELECT reg_ip FROM users WHERE username='tester'").fetchone()
+    check("注册记录 IP", _u and _u[0] == "127.0.0.1")
+    _g = _dbb.execute("SELECT region FROM ip_geo WHERE ip='127.0.0.1'").fetchone()
+    check("IP 属地缓存", _g and _g[0] == "内网")
+    _dbb.close()
     # 未登录拦截
     c.post("/logout", data={"csrf_token": token(c, "/")})
     r = c.post("/forum/new", data={"csrf_token": "x"})
@@ -104,6 +112,7 @@ def main():
     body = r.get_data(as_text=True)
     check("表白发布成功", "测试表白内容啦啦" in body)
     check("表白XXX 格式显示", "表白高二(3)班小王" in body)
+    check("表白卡显示 IP 属地", "IP属地" in body and "内网" in body)
     r = c.post("/confess/new", data={"kind": "捞人", "target": "食堂的长发女生",
                                      "body": "今天中午食堂二楼，有认识的吗",
                                      "csrf_token": t}, follow_redirects=True)
@@ -148,8 +157,7 @@ def main():
                content_type="multipart/form-data", follow_redirects=True)
     body = r.get_data(as_text=True)
     check("报名成功直上榜", "测试候选人" in body and "报名成功" in body)
-    import sqlite3 as _sq3
-    _con = _sq3.connect(os.environ["DATABASE"])
+    _con = sqlite3.connect(os.environ["DATABASE"])
     _row = _con.execute("SELECT photo_data, photo_mime FROM candidates WHERE name='测试候选人'").fetchone()
     check("照片已存入数据库", _row is not None and _row[0] is not None and len(_row[0]) > 100
           and _row[1] == "image/png")
@@ -177,7 +185,6 @@ def main():
     body = r.get_data(as_text=True)
     check("改投成功", "改投成功" in body)
     # 验票数：一号 0、二号 1
-    import sqlite3
     db = sqlite3.connect(os.path.join(tmp, "test.db"))
     v1 = db.execute("SELECT COUNT(*) FROM votes WHERE candidate_id=1").fetchone()[0]
     v2 = db.execute("SELECT COUNT(*) FROM votes WHERE candidate_id=2").fetchone()[0]
@@ -191,10 +198,11 @@ def main():
     check("AJAX 投票 JSON", d["ok"] and d["candidate_id"] == 1
           and d["changed"] is True and d["votes"] == 1)
     # 手动补票：extra_votes 计入展示票数
-    import sqlite3 as _s3b
-    _dbb = _s3b.connect(os.path.join(tmp, "test.db"))
+    _dbb = sqlite3.connect(os.path.join(tmp, "test.db"))
     _dbb.execute("UPDATE candidates SET extra_votes=34 WHERE id=1")
     _dbb.commit()
+    _v = _dbb.execute("SELECT ip FROM votes LIMIT 1").fetchone()
+    check("投票记录 IP", _v and _v[0] == "127.0.0.1")
     _dbb.close()
     r = c.get("/vote?board=xiaohua")
     check("补票后展示票数含 extra_votes", ">35</span>" in r.get_data(as_text=True))
@@ -237,12 +245,43 @@ def main():
 
     print("== 管理后台 ==")
     c.post("/logout", data={"csrf_token": token(c, "/")})
+    # 注册两个小号，制造同 IP 多账号场景
+    for _u2 in ("brush1", "brush2"):
+        t = token(c, "/register")
+        c.post("/register", data={"username": _u2, "password": "pw123456",
+                                  "csrf_token": t})
+        c.post("/logout", data={"csrf_token": token(c, "/")})
     t = token(c, "/login")
     c.post("/login", data={"username": "admin", "password": "admin12345",
                            "csrf_token": t})
     r = c.get("/admin")
     check("管理员后台 200 且有统计", r.status_code == 200 and "数据统计" in r.get_data(as_text=True))
     check("后台看到用户反馈", "希望增加暗色模式" in r.get_data(as_text=True))
+    check("IP 审计区列出多账号 IP", "IP 审计" in r.get_data(as_text=True)
+          and "127.0.0.1" in r.get_data(as_text=True))
+    # 小号 brush1 刷一票，管理员清票
+    _db = sqlite3.connect(os.path.join(tmp, "test.db"))
+    _brush = _db.execute("SELECT id FROM users WHERE username='brush1'").fetchone()[0]
+    _db.close()
+    c.post("/logout", data={"csrf_token": token(c, "/")})
+    t = token(c, "/login")
+    c.post("/login", data={"username": "brush1", "password": "pw123456",
+                           "csrf_token": t})
+    t = token(c, "/vote?board=xiaohua")
+    c.post("/vote/cast", data={"candidate_id": "2", "csrf_token": t})
+    c.post("/logout", data={"csrf_token": token(c, "/")})
+    t = token(c, "/login")
+    c.post("/login", data={"username": "admin", "password": "admin12345",
+                           "csrf_token": t})
+    t = token(c, "/admin")
+    r = c.post(f"/admin/purge-votes/{_brush}", data={"csrf_token": t},
+               follow_redirects=True)
+    check("清票成功", "已清除该账号 1 张投票" in r.get_data(as_text=True))
+    _db = sqlite3.connect(os.path.join(tmp, "test.db"))
+    _n = _db.execute("SELECT COUNT(*) FROM votes WHERE user_id=?",
+                     (_brush,)).fetchone()[0]
+    _db.close()
+    check("刷票已清除", _n == 0)
     m = re.search(r"/admin/feedback/(\d+)/handle", r.get_data(as_text=True))
     check("反馈处理按钮存在", m is not None)
     t = token(c, "/admin")
@@ -274,9 +313,8 @@ def main():
                      "poll_question": "选一个？", "poll_options": "唯一选项",
                      "csrf_token": t}, follow_redirects=True)
     check("选项不足被拒绝", "至少两个选项" in r.get_data(as_text=True))
-    import sqlite3 as _s3
-    _db = _s3.connect(os.path.join(tmp, "test.db"))
-    _db.row_factory = _s3.Row
+    _db = sqlite3.connect(os.path.join(tmp, "test.db"))
+    _db.row_factory = sqlite3.Row
     _poll = _db.execute(
         "SELECT * FROM polls WHERE question='周六下午去哪玩？'").fetchone()
     check("投票已入库", _poll is not None)
@@ -342,13 +380,13 @@ def main():
                headers={"X-Requested-With": "XMLHttpRequest"})
     check("重开后可投票", r.get_json()["ok"])
     # 删除公告级联删除投票
-    _db = _s3.connect(os.path.join(tmp, "test.db"))
+    _db = sqlite3.connect(os.path.join(tmp, "test.db"))
     _aid = _db.execute("SELECT id FROM announcements WHERE title='周末活动投票'").fetchone()[0]
     _db.close()
     t = token(c, "/admin")
     c.post(f"/admin/delete/announcement/{_aid}", data={"csrf_token": t},
            follow_redirects=True)
-    _db = _s3.connect(os.path.join(tmp, "test.db"))
+    _db = sqlite3.connect(os.path.join(tmp, "test.db"))
     n = _db.execute("SELECT COUNT(*) FROM polls").fetchone()[0]
     _db.close()
     check("删除公告级联删除投票", n == 0)
