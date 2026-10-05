@@ -101,6 +101,8 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>标题<input type="text" name="title" required maxlength="60"></label>
     <label>内容<textarea name="body" rows="3" required></textarea></label>
+    <label>投票问题（可选，不填则不创建投票）<input type="text" name="poll_question" maxlength="100" placeholder="例如：下周班会你想讨论哪个话题？"></label>
+    <label>投票选项（可选，每行一个，最多6个）<textarea name="poll_options" rows="3" placeholder="选项一&#10;选项二&#10;选项三"></textarea></label>
     <button class="btn btn-primary" type="submit">发布</button>
   </form>
   {% if announcements %}

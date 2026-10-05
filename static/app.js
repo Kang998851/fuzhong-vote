@@ -219,4 +219,35 @@
     });
   }
   document.querySelectorAll('form.js-vote').forEach(bindVote);
+
+  // 公告投票：点选项即投，可改投
+  function paintPoll(poll, data) {
+    var byId = {};
+    data.options.forEach(function (o) { byId[o.id] = o; });
+    poll.querySelectorAll('form.js-poll-opt').forEach(function (form) {
+      var o = byId[parseInt(form.dataset.oid, 10)];
+      if (!o) return;
+      var btn = form.querySelector('.poll-opt');
+      var mine = data.option_id === o.id;
+      btn.classList.toggle('mine', mine);
+      if (mine) {
+        btn.setAttribute('disabled', '');
+        tapRing(btn, true);
+      } else {
+        btn.removeAttribute('disabled');
+      }
+      btn.querySelector('.poll-fill').style.width = o.pct + '%';
+      var num = btn.querySelector('.vote-num');
+      if (num) animateCount(num, o.votes);
+      var pct = btn.querySelector('.poll-pct');
+      if (pct) pct.textContent = o.pct;
+    });
+    var foot = poll.querySelector('[data-foot]');
+    if (foot) foot.textContent = data.total + ' 人参与 · 你已投票，可改投';
+  }
+  document.querySelectorAll('form.js-poll-opt').forEach(function (form) {
+    ajaxify(form, function (data) {
+      paintPoll(form.closest('[data-poll]'), data);
+    });
+  });
 })();

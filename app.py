@@ -67,6 +67,26 @@ CREATE TABLE IF NOT EXISTS announcements(
     body TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS polls(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    announcement_id INTEGER NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+    question TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS poll_options(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    poll_id INTEGER NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    sort INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS poll_votes(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    poll_id INTEGER NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+    option_id INTEGER NOT NULL REFERENCES poll_options(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    UNIQUE(poll_id, user_id)
+);
 CREATE TABLE IF NOT EXISTS forum_posts(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -148,7 +168,8 @@ def build_schema():
 
 # 有 id 自增列的表（关联表 post_likes / confession_likes 没有 id，
 # 对它们 INSERT 时不能追加 RETURNING id）
-TABLES_WITH_ID = frozenset(["users", "announcements", "forum_posts",
+TABLES_WITH_ID = frozenset(["users", "announcements", "polls", "poll_options",
+                            "poll_votes", "forum_posts",
                             "forum_replies", "confessions", "candidates",
                             "votes", "feedbacks"])
 
@@ -423,8 +444,24 @@ def index():
                (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
                FROM candidates c WHERE c.board=?
                ORDER BY votes DESC, c.id LIMIT 3""", (code,)).fetchall()
+    me = current_user()
+    polls = {}
+    for a in announcements:
+        p = db.execute("SELECT * FROM polls WHERE announcement_id=?",
+                       (a["id"],)).fetchone()
+        if not p:
+            continue
+        res = poll_result(db, p["id"])
+        my_opt = None
+        if me:
+            r = db.execute("SELECT option_id FROM poll_votes WHERE poll_id=? AND user_id=?",
+                           (p["id"], me["id"])).fetchone()
+            my_opt = r["option_id"] if r else None
+        polls[a["id"]] = {"id": p["id"], "question": p["question"],
+                          "my_option": my_opt, **res}
     return render_template("index.html", announcements=announcements,
-                           posts=posts, confesses=confesses, tops=tops)
+                           posts=posts, confesses=confesses, tops=tops,
+                           polls=polls)
 
 
 # ---------- 论坛 ----------
@@ -594,6 +631,57 @@ def confess_like(cid):
                        " WHERE confession_id=?", (cid,)).fetchone()["c"]
         return jsonify(ok=True, liked=liked, likes=n)
     return redirect(url_for("confess", sort=request.args.get("sort", "new")))
+
+
+def poll_result(db, poll_id):
+    """返回某投票的选项票数与百分比。"""
+    opts = db.execute(
+        "SELECT o.id, o.text,"
+        " (SELECT COUNT(*) FROM poll_votes v WHERE v.option_id=o.id) AS votes"
+        " FROM poll_options o WHERE o.poll_id=? ORDER BY o.sort, o.id",
+        (poll_id,)).fetchall()
+    total = sum(o["votes"] for o in opts)
+    return {
+        "options": [{"id": o["id"], "text": o["text"], "votes": o["votes"],
+                     "pct": round(o["votes"] * 100 / total) if total else 0}
+                    for o in opts],
+        "total": total,
+    }
+
+
+@app.route("/poll/<int:poll_id>/vote", methods=["POST"])
+@login_required
+def poll_vote(poll_id):
+    db = get_db()
+    poll = db.execute("SELECT * FROM polls WHERE id=?", (poll_id,)).fetchone()
+    if not poll:
+        if wants_json():
+            return jsonify(ok=False, error="投票不存在"), 404
+        flash("投票不存在", "error")
+        return redirect(url_for("index"))
+    oid = request.form.get("option_id", type=int)
+    opt = db.execute("SELECT id FROM poll_options WHERE id=? AND poll_id=?",
+                     (oid, poll_id)).fetchone()
+    if not opt:
+        if wants_json():
+            return jsonify(ok=False, error="选项不存在"), 400
+        flash("选项不存在", "error")
+        return redirect(url_for("index"))
+    me = current_user()
+    old = db.execute("SELECT option_id FROM poll_votes WHERE poll_id=? AND user_id=?",
+                     (poll_id, me["id"])).fetchone()
+    if not old or old["option_id"] != oid:
+        db.execute("DELETE FROM poll_votes WHERE poll_id=? AND user_id=?",
+                   (poll_id, me["id"]))
+        db.execute("INSERT INTO poll_votes(poll_id, option_id, user_id, created_at)"
+                   " VALUES(?,?,?,?)", (poll_id, oid, me["id"], now_str()))
+        db.commit()
+    if wants_json():
+        res = poll_result(db, poll_id)
+        res.update(ok=True, poll_id=poll_id, option_id=oid)
+        return jsonify(res)
+    flash("投票成功", "ok")
+    return redirect(url_for("index"))
 
 
 # ---------- 搜索 ----------
@@ -858,7 +946,8 @@ def admin_feedback_handle(fid):
     return redirect(url_for("admin"))
 
 
-BACKUP_TABLES = ["users", "announcements", "forum_posts", "forum_replies",
+BACKUP_TABLES = ["users", "announcements", "polls", "poll_options",
+                 "poll_votes", "forum_posts", "forum_replies",
                  "post_likes", "confessions", "confession_likes",
                  "candidates", "votes", "feedbacks"]
 
@@ -892,7 +981,8 @@ def admin_backup():
                     headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 
-RESTORE_ORDER = ["users", "announcements", "forum_posts", "forum_replies",
+RESTORE_ORDER = ["users", "announcements", "polls", "poll_options",
+                 "poll_votes", "forum_posts", "forum_replies",
                  "post_likes", "confessions", "confession_likes",
                  "candidates", "votes", "feedbacks"]
 # 只有这些表有 id 自增列（关联表 post_likes / confession_likes 没有 id）
@@ -960,14 +1050,26 @@ def admin_restore():
 def admin_announce():
     title = request.form.get("title", "").strip()
     body = request.form.get("body", "").strip()
+    q = request.form.get("poll_question", "").strip()[:100]
+    opts = [l.strip()[:50] for l in request.form.get("poll_options", "").splitlines()
+            if l.strip()][:6]
     if not title or not body:
         flash("标题和内容不能为空", "error")
+    elif (q or opts) and (not q or len(opts) < 2):
+        flash("投票需要填写问题和至少两个选项", "error")
     else:
         db = get_db()
-        db.execute("INSERT INTO announcements(title, body, created_at)"
-                   " VALUES(?,?,?)", (title, body, now_str()))
+        aid = db.execute("INSERT INTO announcements(title, body, created_at)"
+                         " VALUES(?,?,?)", (title, body, now_str())).lastrowid
+        if q and len(opts) >= 2:
+            pid = db.execute(
+                "INSERT INTO polls(announcement_id, question, created_at)"
+                " VALUES(?,?,?)", (aid, q, now_str())).lastrowid
+            for i, t in enumerate(opts):
+                db.execute("INSERT INTO poll_options(poll_id, text, sort)"
+                           " VALUES(?,?,?)", (pid, t, i))
         db.commit()
-        flash("公告已发布", "ok")
+        flash("公告已发布" + ("（含投票）" if q else ""), "ok")
     return redirect(url_for("admin"))
 
 

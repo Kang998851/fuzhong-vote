@@ -208,13 +208,88 @@ def main():
                follow_redirects=True)
     check("反馈标为已处理", "已处理" in r.get_data(as_text=True))
 
+    print("== 公告投票 ==")
+    t = token(c, "/admin")
+    r = c.post("/admin/announce",
+               data={"title": "周末活动投票", "body": "请大家投票选择",
+                     "poll_question": "周六下午去哪玩？",
+                     "poll_options": "图书馆\n操场\n电竞馆",
+                     "csrf_token": t}, follow_redirects=True)
+    check("公告+投票发布成功", "公告已发布（含投票）" in r.get_data(as_text=True))
+    r = c.post("/admin/announce",
+               data={"title": "无效投票", "body": "只有一个选项",
+                     "poll_question": "选一个？", "poll_options": "唯一选项",
+                     "csrf_token": t}, follow_redirects=True)
+    check("选项不足被拒绝", "至少两个选项" in r.get_data(as_text=True))
+    import sqlite3 as _s3
+    _db = _s3.connect(os.path.join(tmp, "test.db"))
+    _db.row_factory = _s3.Row
+    _poll = _db.execute(
+        "SELECT * FROM polls WHERE question='周六下午去哪玩？'").fetchone()
+    check("投票已入库", _poll is not None)
+    _opts = _db.execute("SELECT * FROM poll_options WHERE poll_id=? ORDER BY sort",
+                        (_poll["id"],)).fetchall()
+    check("三个选项已入库", len(_opts) == 3)
+    _db.close()
+    # 普通用户投票
+    c.post("/logout", data={"csrf_token": token(c, "/")})
+    t = token(c, "/login")
+    c.post("/login", data={"username": "tester", "password": "pw123456",
+                           "csrf_token": t})
+    r = c.get("/")
+    check("首页显示投票问题", "周六下午去哪玩？" in r.get_data(as_text=True))
+    t = token(c, "/")
+    pid = _poll["id"]
+    oid1, oid2 = _opts[0]["id"], _opts[1]["id"]
+    r = c.post(f"/poll/{pid}/vote", data={"option_id": str(oid1), "csrf_token": t},
+               headers={"X-Requested-With": "XMLHttpRequest"})
+    d = r.get_json()
+    check("AJAX 投票 JSON", d["ok"] and d["option_id"] == oid1
+          and d["total"] == 1 and d["options"][0]["votes"] == 1
+          and d["options"][0]["pct"] == 100)
+    r = c.post(f"/poll/{pid}/vote", data={"option_id": str(oid1), "csrf_token": t},
+               headers={"X-Requested-With": "XMLHttpRequest"})
+    check("重复投同一选项不重复计票", r.get_json()["total"] == 1)
+    r = c.post(f"/poll/{pid}/vote", data={"option_id": str(oid2), "csrf_token": t},
+               headers={"X-Requested-With": "XMLHttpRequest"})
+    d = r.get_json()
+    check("改投后票数转移",
+          d["options"][0]["votes"] == 0 and d["options"][1]["votes"] == 1)
+    # 管理员也投一票
+    c.post("/logout", data={"csrf_token": token(c, "/")})
+    t = token(c, "/login")
+    c.post("/login", data={"username": "admin", "password": "admin12345",
+                           "csrf_token": t})
+    t = token(c, "/")
+    r = c.post(f"/poll/{pid}/vote", data={"option_id": str(oid1), "csrf_token": t},
+               headers={"X-Requested-With": "XMLHttpRequest"})
+    d = r.get_json()
+    check("两人投票总数 2", d["total"] == 2 and d["options"][0]["pct"] == 50)
+    # 删除公告级联删除投票
+    _db = _s3.connect(os.path.join(tmp, "test.db"))
+    _aid = _db.execute("SELECT id FROM announcements WHERE title='周末活动投票'").fetchone()[0]
+    _db.close()
+    t = token(c, "/admin")
+    c.post(f"/admin/delete/announcement/{_aid}", data={"csrf_token": t},
+           follow_redirects=True)
+    _db = _s3.connect(os.path.join(tmp, "test.db"))
+    n = _db.execute("SELECT COUNT(*) FROM polls").fetchone()[0]
+    _db.close()
+    check("删除公告级联删除投票", n == 0)
+    # 登回管理员，供后续备份/恢复测试使用
+    c.post("/logout", data={"csrf_token": token(c, "/")})
+    t = token(c, "/login")
+    c.post("/login", data={"username": "admin", "password": "admin12345",
+                           "csrf_token": t})
+
     print("== 数据备份 ==")
     r = c.get("/admin/backup")
     check("备份下载 200", r.status_code == 200)
     import json as _json
     dump = _json.loads(r.get_data(as_text=True))
     check("备份含全部表", set(["users", "forum_posts", "confessions",
-                             "candidates", "votes", "feedbacks"]) <= set(dump["tables"].keys()))
+                             "candidates", "votes", "feedbacks",
+                             "polls", "poll_options", "poll_votes"]) <= set(dump["tables"].keys()))
     check("备份含反馈数据", any(f["body"] == "希望增加暗色模式"
                              for f in dump["tables"]["feedbacks"]))
     c2 = appmod.app.test_client()
