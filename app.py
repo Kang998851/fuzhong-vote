@@ -854,6 +854,66 @@ def admin_backup():
                     headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 
+RESTORE_ORDER = ["users", "announcements", "forum_posts", "forum_replies",
+                 "post_likes", "confessions", "confession_likes",
+                 "candidates", "votes", "feedbacks"]
+
+
+def restore_dump(dump):
+    """用备份 JSON 恢复全站数据：先清空，再按父表优先顺序写入（含原始 id）。
+    返回恢复的总记录数。"""
+    tables = dump.get("tables") or {}
+    if "users" not in tables or "candidates" not in tables:
+        raise ValueError("备份文件无效：缺少必要的数据表")
+    present = [t for t in RESTORE_ORDER if t in tables]
+    db = get_db()
+    if USE_PG:
+        db.execute("TRUNCATE %s RESTART IDENTITY CASCADE" % ", ".join(present))
+    else:
+        for t in reversed(present):
+            db.execute(f"DELETE FROM {t}")
+    total = 0
+    for t in present:
+        for r in tables[t] or []:
+            r = dict(r)
+            if t == "candidates" and r.get("photo_data"):
+                r["photo_data"] = base64.b64decode(r["photo_data"])
+            cols = list(r.keys())
+            db.execute(
+                f"INSERT INTO {t}({','.join(cols)}) VALUES({','.join(['?'] * len(cols))})",
+                tuple(r[c] for c in cols))
+            total += 1
+    if USE_PG:
+        for t in present:
+            db.execute(
+                "SELECT setval(pg_get_serial_sequence(?, 'id'),"
+                " (SELECT COALESCE(MAX(id), 1) FROM %s))" % t, (t,))
+    db.commit()
+    return total
+
+
+@app.route("/admin/restore", methods=["POST"])
+@admin_required
+def admin_restore():
+    f = request.files.get("backup")
+    if not f or not f.filename:
+        flash("请选择备份文件", "error")
+        return redirect(url_for("admin"))
+    try:
+        dump = json.load(f.stream)
+    except Exception:
+        flash("备份文件格式不正确", "error")
+        return redirect(url_for("admin"))
+    try:
+        n = restore_dump(dump)
+    except Exception as e:
+        flash(f"恢复失败：{e}", "error")
+        return redirect(url_for("admin"))
+    session.clear()
+    flash(f"恢复成功，共 {n} 条记录。请用备份时的账号重新登录", "ok")
+    return redirect(url_for("login"))
+
+
 @app.route("/admin/announce", methods=["POST"])
 @admin_required
 def admin_announce():

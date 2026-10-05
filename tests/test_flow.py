@@ -200,6 +200,24 @@ def main():
     c2 = appmod.app.test_client()
     check("备份拒绝未登录", c2.get("/admin/backup").status_code == 403)
 
+    print("== 数据恢复 ==")
+    import tempfile as _tf
+    _bak_path = os.path.join(_tf.mkdtemp(prefix="fzwall_restore_"), "bak.json")
+    with open(_bak_path, "w", encoding="utf-8") as _f:
+        _f.write(r.get_data(as_text=True))
+    with open(_bak_path, "rb") as _f:
+        r = c.post("/admin/restore",
+                   data={"backup": (_f, "bak.json"), "csrf_token": token(c, "/admin")},
+                   content_type="multipart/form-data", follow_redirects=True)
+    check("恢复成功", "恢复成功" in r.get_data(as_text=True))
+    t = token(c, "/login")
+    c.post("/login", data={"username": "admin", "password": "admin12345",
+                           "csrf_token": t})
+    r = c.get("/admin")
+    check("恢复后反馈数据仍在", "希望增加暗色模式" in r.get_data(as_text=True))
+    r = c.get("/vote?board=xiaohua")
+    check("恢复后候选人仍在", "测试候选人" in r.get_data(as_text=True))
+
     print(f"\n全部通过：{len(passed)} 项 ✓")
 
 
