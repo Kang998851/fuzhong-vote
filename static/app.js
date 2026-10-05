@@ -27,25 +27,56 @@
   tick();
   setInterval(tick, 60000);
 
-  // 报名照片预览
+  // 报名照片预览 + 拖拽上传
   var input = document.getElementById('photo-input');
   var preview = document.getElementById('photo-preview');
+  var zone = document.getElementById('photo-dropzone');
+  function handlePhotoFile(f) {
+    if (!f) { preview.style.display = 'none'; return; }
+    if (f.type && f.type.indexOf('image/') !== 0) {
+      alert('请上传 JPG / PNG / WebP 格式的图片');
+      input.value = '';
+      preview.style.display = 'none';
+      return;
+    }
+    if (f.size > 4 * 1024 * 1024) {
+      alert('照片不能超过 4MB');
+      input.value = '';
+      preview.style.display = 'none';
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      preview.src = e.target.result;
+      preview.style.display = 'block';
+    };
+    reader.readAsDataURL(f);
+  }
   if (input && preview) {
     input.addEventListener('change', function () {
-      var f = input.files[0];
-      if (!f) { preview.style.display = 'none'; return; }
-      if (f.size > 4 * 1024 * 1024) {
-        alert('照片不能超过 4MB');
-        input.value = '';
-        preview.style.display = 'none';
-        return;
-      }
-      var reader = new FileReader();
-      reader.onload = function (e) {
-        preview.src = e.target.result;
-        preview.style.display = 'block';
-      };
-      reader.readAsDataURL(f);
+      handlePhotoFile(input.files[0]);
+    });
+  }
+  if (zone && input) {
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      zone.addEventListener(ev, function (e) {
+        e.preventDefault();
+        zone.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+      zone.addEventListener(ev, function (e) {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+      });
+    });
+    zone.addEventListener('drop', function (e) {
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!f) return;
+      var dt = new DataTransfer();
+      dt.items.add(f);
+      input.files = dt.files;
+      handlePhotoFile(f);
     });
   }
 })();

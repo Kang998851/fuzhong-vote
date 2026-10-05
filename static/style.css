@@ -132,6 +132,14 @@ a:hover{text-decoration:underline}
   border-radius:12px;padding:13px 16px;color:var(--text);font-size:16px}
 .search-big input::placeholder{color:var(--text3);opacity:.6}
 .photo-preview{max-width:220px;border-radius:12px;border:1px solid var(--border);margin-top:6px}
+.dropzone{position:relative;border:2px dashed rgba(255,255,255,.22);border-radius:12px;
+  padding:30px 16px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;
+  color:var(--text2);margin-top:6px;background:var(--card2)}
+.dropzone input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.dropzone-inner{display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.dropzone-icon{font-size:30px}
+.dropzone .linklike{color:#7FB3E8;text-decoration:underline}
+.dropzone.dragover{border-color:#7FB3E8;background:rgba(127,179,232,.10);color:var(--text)}
 .post-body{white-space:pre-wrap;margin:14px 0;font-size:15px}
 .center{text-align:center}
 

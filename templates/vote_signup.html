@@ -17,7 +17,13 @@
     <label>班级<input type="text" name="class_name" required maxlength="30" placeholder="如：高一(3)班"></label>
     <label>参选宣言<textarea name="slogan" rows="3" required minlength="2" maxlength="100" placeholder="一句话介绍自己"></textarea></label>
     <label>照片（必填，JPG/PNG/WebP，不超过 4MB）
-      <input type="file" name="photo" id="photo-input" accept=".jpg,.jpeg,.png,.webp" required>
+      <div class="dropzone" id="photo-dropzone">
+        <div class="dropzone-inner">
+          <span class="dropzone-icon">📷</span>
+          <span>把照片拖到这里，或<span class="linklike">点击选择</span></span>
+        </div>
+        <input type="file" name="photo" id="photo-input" accept=".jpg,.jpeg,.png,.webp" required>
+      </div>
     </label>
     <img id="photo-preview" class="photo-preview" alt="照片预览" style="display:none">
     <button class="btn btn-primary" type="submit">提交报名</button>
