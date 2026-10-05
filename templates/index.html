@@ -2,6 +2,33 @@
 {% set active_page = 'index' %}
 {% block title %}首页{% endblock %}
 {% block content %}
+{% if vote_closed and winners %}
+<!-- WINNERS -->
+<section class="card winners-card">
+  <div class="card-label">/ WINNERS</div>
+  <h2 class="card-title">🏆 评选结果揭晓</h2>
+  <div class="winners-row">
+    {% for code, label in boards %}
+    {% set w = winners.get(code) %}
+    {% if w %}
+    <div class="winner">
+      <div class="winner-photo">
+        {% if w.has_photo %}
+        <img src="{{ url_for('candidate_photo', cid=w.id) }}" alt="{{ w.name }}" loading="lazy">
+        {% else %}
+        <div class="cand-ph winner-ph">{{ w.name[0] }}</div>
+        {% endif %}
+        <span class="crown">👑</span>
+      </div>
+      <div class="winner-board">{{ label }}</div>
+      <b class="winner-name">{{ w.name }}</b>
+      <span class="dim">{{ w.class_name }} · {{ w.votes }} 票</span>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 <div class="grid-3">
   <!-- PROFILE -->
   <section class="card">

@@ -166,6 +166,13 @@ CREATE TABLE IF NOT EXISTS ip_geo(
     region TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS achievements(
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    board TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    seen INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(user_id, board)
+);
 CREATE TABLE IF NOT EXISTS feedbacks(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -523,11 +530,35 @@ def inject_common():
         days, hours, closed = 0, 0, True
     else:
         days, hours, closed = delta.days, delta.seconds // 3600, False
+    db = get_db()
+    winners = get_winners(db) if closed else {}
+    my_achievements, unseen_achievements = [], []
+    if me and winners:
+        # 冠军账号授予成就（幂等）
+        for code, w in winners.items():
+            if w["user_id"] == me["id"]:
+                if USE_PG:
+                    db.execute("INSERT INTO achievements(user_id, board, created_at, seen)"
+                               " VALUES(?,?,?,0) ON CONFLICT(user_id, board) DO NOTHING",
+                               (me["id"], code, now_str()))
+                else:
+                    db.execute("INSERT OR IGNORE INTO achievements(user_id, board,"
+                               " created_at, seen) VALUES(?,?,?,0)",
+                               (me["id"], code, now_str()))
+        db.commit()
+        my_achievements = [r["board"] for r in db.execute(
+            "SELECT board FROM achievements WHERE user_id=?", (me["id"],)).fetchall()]
+        unseen_achievements = [r["board"] for r in db.execute(
+            "SELECT board FROM achievements WHERE user_id=? AND seen=0",
+            (me["id"],)).fetchall()]
     return dict(
         me=me,
         boards=BOARDS,
         board_names=BOARD_NAMES,
         vote_closed=closed,
+        winners=winners,
+        my_achievements=my_achievements,
+        unseen_achievements=unseen_achievements,
         cd_days=days,
         cd_hours=hours,
         deadline_str=dl.strftime("%Y-%m-%d %H:%M"),
@@ -996,6 +1027,19 @@ def vote():
                            my_vote=my_vote)
 
 
+@app.route("/achievement/seen", methods=["POST"])
+@login_required
+def achievement_seen():
+    """冠军账号关闭成就弹窗：标记已看过，不再展示。"""
+    db = get_db()
+    db.execute("UPDATE achievements SET seen=1 WHERE user_id=?",
+               (current_user()["id"],))
+    db.commit()
+    if wants_json():
+        return jsonify(ok=True)
+    return redirect(url_for("index"))
+
+
 @app.route("/vote/cast", methods=["POST"])
 @login_required
 def vote_cast():
@@ -1040,6 +1084,25 @@ def vote_cast():
 
 def vote_closed_flag():
     return datetime.now(TZ) > get_deadline()
+
+
+def get_winners(db):
+    """投票截止后返回每榜冠军 {board_code: row}；未截止返回 {}。
+    票数含手动补票，并列时 id 小者胜（与榜单排序一致）。"""
+    if not vote_closed_flag():
+        return {}
+    winners = {}
+    for code, _ in BOARDS:
+        w = db.execute(
+            """SELECT c.id, c.user_id, c.name, c.class_name, c.slogan,
+                      (c.photo_data IS NOT NULL) AS has_photo,
+                      (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id)
+                        + c.extra_votes AS votes
+               FROM candidates c WHERE c.board=?
+               ORDER BY votes DESC, c.id LIMIT 1""", (code,)).fetchone()
+        if w:
+            winners[code] = w
+    return winners
 
 
 PHOTO_MIMES = {"jpg": "image/jpeg", "jpeg": "image/jpeg",

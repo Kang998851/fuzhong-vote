@@ -24,11 +24,15 @@
   <ul class="cand-list" data-vote-list data-cast-url="{{ url_for('vote_cast') }}" data-csrf="{{ csrf_token() }}">
     {% for c in candidates %}
     <li class="cand-row" data-cid="{{ c.id }}">
+      <div class="cand-photo-wrap">
       {% if c.has_photo %}
       <img class="cand-photo" src="{{ url_for('candidate_photo', cid=c.id) }}" alt="{{ c.name }}" loading="lazy">
       {% else %}
       <div class="cand-photo cand-ph">{{ c.name[0] }}</div>
       {% endif %}
+      {% set _w = winners.get(c.board) %}
+      {% if vote_closed and _w and _w["id"] == c.id %}<span class="crown">👑</span>{% endif %}
+      </div>
       <div class="cand-info">
         <b>{{ loop.index }}. {{ c.name }}</b>
         <span class="dim">{{ c.class_name }}</span>

@@ -354,3 +354,40 @@ a:hover{text-decoration:underline}
   padding:2px 8px;border-radius:999px;vertical-align:2px;white-space:nowrap;
 }
 .poll[data-closed="1"] .poll-opt{opacity:.75}
+
+/* ---- 冠军与成就 ---- */
+.cand-photo-wrap{position:relative;flex-shrink:0}
+.crown{position:absolute;top:-16px;left:50%;transform:translateX(-50%) rotate(-10deg);
+  font-size:30px;line-height:1;z-index:3;pointer-events:none;
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
+.winners-card{border-color:#f5b301;background:linear-gradient(180deg,#1a2c52,#14213B)}
+.winners-row{display:flex;gap:18px;justify-content:space-around;flex-wrap:wrap;margin-top:10px}
+.winner{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:120px}
+.winner-photo{position:relative;width:110px;height:110px}
+.winner-photo img{width:100%;height:100%;object-fit:cover;border-radius:18px;
+  border:3px solid #f5b301}
+.winner-ph{width:100%;height:100%;border-radius:18px;border:3px solid #f5b301;
+  display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:800}
+.winner-board{font-size:12px;font-weight:700;color:#f5b301;letter-spacing:2px}
+.winner-name{font-size:18px}
+.achieve-badge{display:inline-block;font-size:11px;font-weight:700;color:#f5b301;
+  border:1px solid #f5b301;border-radius:999px;padding:1px 8px;margin:2px 2px 0 0;
+  white-space:nowrap}
+.achieve-overlay{position:fixed;inset:0;z-index:200;display:flex;align-items:center;
+  justify-content:center;background:rgba(10,20,38,.72);backdrop-filter:blur(6px);
+  padding:20px}
+.achieve-card{background:var(--card);border:1px solid #f5b301;border-radius:22px;
+  padding:36px 40px;text-align:center;max-width:380px;width:100%;
+  box-shadow:0 24px 80px rgba(0,0,0,.5);
+  animation:achieve-pop .55s cubic-bezier(.32,.72,0,1)}
+.achieve-card .card-title{margin:6px 0 10px}
+.achieve-crown{font-size:64px;line-height:1;animation:achieve-pop .7s cubic-bezier(.32,.72,0,1)}
+.achieve-titles{display:flex;gap:8px;justify-content:center;margin:12px 0;flex-wrap:wrap}
+.achieve-title{font-size:20px;font-weight:800;color:#f5b301;border:2px solid #f5b301;
+  border-radius:12px;padding:6px 16px}
+.achieve-card form{margin-top:14px}
+@keyframes achieve-pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+.rain-bit{position:fixed;top:-24px;z-index:300;pointer-events:none}
+@media (prefers-reduced-motion: reduce){
+  .achieve-card,.achieve-crown{animation:none}
+}

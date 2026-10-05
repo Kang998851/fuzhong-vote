@@ -408,6 +408,35 @@ def main():
     c.post("/login", data={"username": "admin", "password": "admin12345",
                            "csrf_token": t})
 
+    print("== 冠军与成就 ==")
+    os.environ["VOTE_DEADLINE"] = "2020-01-01 00:00"  # 模拟投票已截止
+    c.post("/logout", data={"csrf_token": token(c, "/")})
+    t = token(c, "/login")
+    c.post("/login", data={"username": "tester", "password": "pw123456",
+                           "csrf_token": t})
+    r = c.get("/")
+    body = r.get_data(as_text=True)
+    check("首页展示评选结果", "评选结果揭晓" in body and "测试候选人" in body)
+    check("冠军照片带皇冠", "👑" in body)
+    check("冠军账号首次打开弹出成就", "恭喜夺冠" in body and "achieveOverlay" in body)
+    check("侧栏显示成就徽章", "👑校花" in body)
+    r = c.get("/vote?board=xiaohua")
+    check("榜单冠军照片带皇冠", "👑" in r.get_data(as_text=True))
+    t = token(c, "/")
+    c.post("/achievement/seen", data={"csrf_token": t}, follow_redirects=True)
+    r = c.get("/")
+    check("确认后不再弹窗", "achieveOverlay" not in r.get_data(as_text=True))
+    check("成就徽章保留", "👑校花" in r.get_data(as_text=True))
+    _db = sqlite3.connect(os.path.join(tmp, "test.db"))
+    _a = _db.execute("SELECT seen FROM achievements WHERE board='xiaohua'").fetchone()
+    _db.close()
+    check("成就已标记已看", _a and _a[0] == 1)
+    del os.environ["VOTE_DEADLINE"]  # 恢复默认截止时间
+    c.post("/logout", data={"csrf_token": token(c, "/")})
+    t = token(c, "/login")
+    c.post("/login", data={"username": "admin", "password": "admin12345",
+                           "csrf_token": t})
+
     print("== 数据备份 ==")
     r = c.get("/admin/backup")
     check("备份下载 200", r.status_code == 200)

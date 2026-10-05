@@ -52,7 +52,9 @@
     <div class="side-user">
       {% if me %}
       <div class="avatar">{{ me.username[0] }}</div>
-      <div class="uinfo"><b>{{ me.username }}</b><small class="ok-text">已登录</small></div>
+      <div class="uinfo"><b>{{ me.username }}</b><small class="ok-text">已登录</small>
+        {% for b in my_achievements %}<span class="achieve-badge">👑{{ board_names[b] }}</span>{% endfor %}
+      </div>
       <form action="{{ url_for('logout') }}" method="post">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-xs" type="submit">退出</button>
@@ -87,5 +89,53 @@
   </main>
 </div>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
+{% if unseen_achievements %}
+<!-- 成就揭晓：冠军账号首次打开时满屏撒花 -->
+<div class="achieve-overlay" id="achieveOverlay">
+  <div class="achieve-card">
+    <div class="achieve-crown">👑</div>
+    <h2 class="card-title">🎉 恭喜夺冠！</h2>
+    <p>你在附中墙校园评选中获得</p>
+    <div class="achieve-titles">
+      {% for b in unseen_achievements %}<span class="achieve-title">{{ board_names[b] }}</span>{% endfor %}
+    </div>
+    <p class="dim">实至名归！</p>
+    <form action="{{ url_for('achievement_seen') }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-primary" type="submit">太棒了！</button>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var colors = ['#e14b5a', '#f5b301', '#3fa7ff', '#3fae6a', '#b678ff', '#ff8c42', '#EE839F'];
+  for (var i = 0; i < 130; i++) {
+    (function (i) {
+      var s = document.createElement('span');
+      s.className = 'rain-bit';
+      var w = 6 + Math.random() * 8;
+      s.style.width = w + 'px';
+      s.style.height = (w * (0.5 + Math.random() * 1)) + 'px';
+      s.style.background = colors[i % colors.length];
+      if (Math.random() < 0.35) s.style.borderRadius = '50%';
+      s.style.left = (Math.random() * 100) + 'vw';
+      document.body.appendChild(s);
+      var sway = (Math.random() - 0.5) * 160;
+      var rot = Math.round(Math.random() * 1080 - 540) + 'deg';
+      var anim = s.animate([
+        { transform: 'translateY(-30px) translateX(0) rotate(0deg)', opacity: 1 },
+        { transform: 'translateY(52vh) translateX(' + Math.round(sway * 0.6) + 'px) rotate(' + rot + ')',
+          opacity: 1, offset: 0.6 },
+        { transform: 'translateY(108vh) translateX(' + Math.round(sway) + 'px) rotate(' + rot + ')',
+          opacity: 0 }
+      ], { duration: 2400 + Math.random() * 1800, delay: Math.random() * 1200,
+           easing: 'cubic-bezier(.3,.6,.4,1)' });
+      anim.onfinish = function () { s.remove(); };
+    })(i);
+  }
+})();
+</script>
+{% endif %}
 </body>
 </html>
