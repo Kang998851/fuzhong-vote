@@ -227,6 +227,34 @@ def main():
     check("ID_TABLES 与表结构一致",
           set(appmod.ID_TABLES) == (_with_id & set(appmod.RESTORE_ORDER)))
 
+    print("== PG 兼容：INSERT 改写 ==")
+
+    class _FakeRaw:
+        def __init__(self):
+            self.sqls = []
+
+        def execute(self, q, params=()):
+            self.sqls.append(q)
+
+        def fetchone(self):
+            return {"id": 1}
+
+    _fake = _FakeRaw()
+    _cur = appmod.Cursor.__new__(appmod.Cursor)
+    _cur._is_pg = True
+    _cur._cur = _fake
+    _cur._lastrowid = None
+    _cur.execute("INSERT INTO confession_likes(user_id, confession_id) VALUES(?,?)",
+                 (1, 2))
+    _cur.execute("INSERT INTO post_likes(user_id, post_id) VALUES(?,?)", (1, 2))
+    _cur.execute("INSERT INTO confessions(nickname, body) VALUES(?,?)", ("a", "b"))
+    check("关联表 INSERT 不追加 RETURNING id",
+          all("RETURNING" not in s for s in _fake.sqls[:2]))
+    check("普通表 INSERT 追加 RETURNING id",
+          "RETURNING id" in _fake.sqls[2])
+    check("? 占位符转为 %s",
+          "%s" in _fake.sqls[0] and "?" not in _fake.sqls[0])
+
     print(f"\n全部通过：{len(passed)} 项 ✓")
 
 

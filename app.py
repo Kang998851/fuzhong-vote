@@ -7,6 +7,7 @@ Flask + SQLite 单文件应用，无构建步骤，python app.py 即可运行。
 import os
 import base64
 import json
+import re
 import sqlite3
 import secrets
 from datetime import datetime
@@ -144,6 +145,13 @@ def build_schema():
     return SCHEMA.replace("INTEGER PRIMARY KEY AUTOINCREMENT", pk)
 
 
+# 有 id 自增列的表（关联表 post_likes / confession_likes 没有 id，
+# 对它们 INSERT 时不能追加 RETURNING id）
+TABLES_WITH_ID = frozenset(["users", "announcements", "forum_posts",
+                            "forum_replies", "confessions", "candidates",
+                            "votes", "feedbacks"])
+
+
 class Cursor:
     """统一 sqlite3 / psycopg2 的 cursor：SQL 里占位符一律写 ?，INSERT 后可用 .lastrowid。"""
 
@@ -162,8 +170,10 @@ class Cursor:
         returning = False
         if self._is_pg and q.lstrip()[:6].upper() == "INSERT" \
                 and "returning" not in q.lower():
-            q += " RETURNING id"
-            returning = True
+            m = re.match(r"\s*INSERT\s+INTO\s+\"?(\w+)\"?", q, re.I)
+            if m and m.group(1).lower() in TABLES_WITH_ID:
+                q += " RETURNING id"
+                returning = True
         self._cur.execute(q, params)
         if returning:
             row = self._cur.fetchone()
@@ -858,8 +868,7 @@ RESTORE_ORDER = ["users", "announcements", "forum_posts", "forum_replies",
                  "post_likes", "confessions", "confession_likes",
                  "candidates", "votes", "feedbacks"]
 # 只有这些表有 id 自增列（关联表 post_likes / confession_likes 没有 id）
-ID_TABLES = ["users", "announcements", "forum_posts", "forum_replies",
-             "confessions", "candidates", "votes", "feedbacks"]
+ID_TABLES = TABLES_WITH_ID
 
 
 def restore_dump(dump):
