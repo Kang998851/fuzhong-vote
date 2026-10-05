@@ -8,9 +8,9 @@
   <h2 class="card-title">{{ post.title }}</h2>
   <p class="dim">{{ post.username }} · {{ post.created_at[:16] }}</p>
   <div class="post-body">{{ post.body }}</div>
-  <form action="{{ url_for('forum_like', pid=post.id) }}" method="post" class="inline-form">
+  <form action="{{ url_for('forum_like', pid=post.id) }}" method="post" class="inline-form js-like">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button class="btn btn-outline btn-sm" type="submit">{{ '♥ 已赞' if liked else '♡ 点赞' }} {{ post.likes }}</button>
+    <button class="btn btn-outline btn-sm js-like-btn{{ ' is-liked' if liked else '' }}" type="submit"><span class="heart">{{ '♥' if liked else '♡' }}</span> <span class="like-count">{{ post.likes }}</span></button>
   </form>
 </section>
 

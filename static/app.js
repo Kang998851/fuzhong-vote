@@ -80,3 +80,132 @@
     });
   }
 })();
+
+// 点赞 / 投票：无刷新提交 + 动画
+(function () {
+  function restart(el, cls) {
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+
+  // 数字滚动
+  function animateCount(el, to, suffix) {
+    var from = parseInt(el.textContent, 10) || 0;
+    to = parseInt(to, 10) || 0;
+    suffix = suffix || '';
+    if (from === to) { restart(el, 'bump'); return; }
+    var dur = 450, start = null;
+    function step(ts) {
+      if (!start) start = ts;
+      var p = Math.min(1, (ts - start) / dur);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(from + (to - from) * eased) + suffix;
+      if (p < 1) requestAnimationFrame(step);
+      else restart(el, 'bump');
+    }
+    requestAnimationFrame(step);
+  }
+
+  // 点赞时飘出小爱心
+  function burstHearts(btn) {
+    for (var i = 0; i < 5; i++) {
+      (function (i) {
+        var s = document.createElement('span');
+        s.className = 'float-heart';
+        s.textContent = '♥';
+        s.style.marginLeft = (Math.random() * 36 - 18) + 'px';
+        s.style.animationDelay = (i * 0.06) + 's';
+        btn.appendChild(s);
+        setTimeout(function () { s.remove(); }, 1000);
+      })(i);
+    }
+  }
+
+  // 投票成功撒花
+  function confetti(container) {
+    var colors = ['#e14b5a', '#f5b301', '#3fa7ff', '#3fae6a', '#b678ff'];
+    for (var i = 0; i < 16; i++) {
+      (function (i) {
+        var s = document.createElement('span');
+        s.className = 'confetti-bit';
+        s.style.background = colors[i % colors.length];
+        s.style.left = (18 + Math.random() * 64) + '%';
+        s.style.animationDelay = (Math.random() * 0.18) + 's';
+        container.appendChild(s);
+        setTimeout(function () { s.remove(); }, 1500);
+      })(i);
+    }
+  }
+
+  // 通用：拦截表单走 fetch，失败时降级为整页提交
+  function ajaxify(form, onOk) {
+    if (form.dataset.bound) return;
+    form.dataset.bound = '1';
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      if (form.dataset.busy) return;
+      form.dataset.busy = '1';
+      fetch(form.action, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: new FormData(form),
+        credentials: 'same-origin'
+      }).then(function (r) { return r.json(); })
+        .then(function (data) {
+          delete form.dataset.busy;
+          if (data && data.ok) onOk(data);
+          else alert((data && data.error) || '操作失败，请重试');
+        })
+        .catch(function () { form.submit(); });
+    });
+  }
+
+  // 点赞
+  document.querySelectorAll('form.js-like').forEach(function (form) {
+    ajaxify(form, function (data) {
+      var btn = form.querySelector('.js-like-btn');
+      var heart = btn.querySelector('.heart');
+      var count = btn.querySelector('.like-count');
+      heart.textContent = data.liked ? '♥' : '♡';
+      btn.classList.toggle('is-liked', data.liked);
+      restart(btn, 'pop');
+      animateCount(count, data.likes);
+      if (data.liked) burstHearts(btn);
+    });
+  });
+
+  // 投票
+  function paintVoteState(list, votedCid) {
+    var castUrl = list.dataset.castUrl, csrf = list.dataset.csrf;
+    list.querySelectorAll('[data-cid]').forEach(function (item) {
+      var box = item.querySelector('[data-actions]');
+      if (!box) return;
+      if (item.dataset.cid === String(votedCid)) {
+        box.innerHTML = '<button class="btn btn-sm" disabled>已投票 ✓</button>';
+      } else {
+        box.innerHTML =
+          '<form action="' + castUrl + '" method="post" class="inline-form js-vote" data-cid="' + item.dataset.cid + '">' +
+          '<input type="hidden" name="csrf_token" value="' + csrf + '">' +
+          '<input type="hidden" name="candidate_id" value="' + item.dataset.cid + '">' +
+          '<button class="btn btn-primary btn-sm" type="submit">改投TA</button></form>';
+      }
+    });
+    list.querySelectorAll('form.js-vote').forEach(bindVote);
+  }
+
+  function bindVote(form) {
+    ajaxify(form, function (data) {
+      var list = form.closest('[data-vote-list]');
+      paintVoteState(list, data.candidate_id);
+      var item = list.querySelector('[data-cid="' + data.candidate_id + '"]');
+      if (item) {
+        var num = item.querySelector('.vote-num');
+        if (num) animateCount(num, data.votes);
+        restart(item, 'vote-flash');
+        confetti(item);
+      }
+    });
+  }
+  document.querySelectorAll('form.js-vote').forEach(bindVote);
+})();

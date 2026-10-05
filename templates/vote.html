@@ -20,9 +20,9 @@
   </div>
 
   {% if candidates %}
-  <ul class="cand-list">
+  <ul class="cand-list" data-vote-list data-cast-url="{{ url_for('vote_cast') }}" data-csrf="{{ csrf_token() }}">
     {% for c in candidates %}
-    <li class="cand-row">
+    <li class="cand-row" data-cid="{{ c.id }}">
       {% if c.has_photo %}
       <img class="cand-photo" src="{{ url_for('candidate_photo', cid=c.id) }}" alt="{{ c.name }}" loading="lazy">
       {% else %}
@@ -33,8 +33,8 @@
         <span class="dim">{{ c.class_name }}</span>
         <p class="dim">{{ c.slogan }}</p>
       </div>
-      <div class="cand-vote">
-        <b class="votes">{{ c.votes }} 票</b>
+      <div class="cand-vote" data-actions>
+        <b class="votes"><span class="vote-num">{{ c.votes }}</span> 票</b>
         {% if not me %}
         <a class="btn btn-outline btn-sm" href="{{ url_for('login', next=request.path) }}">登录投票</a>
         {% elif vote_closed %}
@@ -42,7 +42,7 @@
         {% elif my_vote == c.id %}
         <button class="btn btn-sm" disabled>已投票 ✓</button>
         {% else %}
-        <form action="{{ url_for('vote_cast') }}" method="post" class="inline-form">
+        <form action="{{ url_for('vote_cast') }}" method="post" class="inline-form js-vote" data-cid="{{ c.id }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="candidate_id" value="{{ c.id }}">
           <button class="btn btn-primary btn-sm" type="submit">{{ '改投TA' if my_vote else '投TA一票' }}</button>

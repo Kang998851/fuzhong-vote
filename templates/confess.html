@@ -34,9 +34,9 @@
       <span>— {{ c.nickname or '匿名' }}</span>
       <span class="dim">{{ c.created_at[:16] }}</span>
     </div>
-    <form action="{{ url_for('confess_like', cid=c.id, sort=sort) }}" method="post" class="inline-form">
+    <form action="{{ url_for('confess_like', cid=c.id, sort=sort) }}" method="post" class="inline-form js-like">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-outline btn-sm" type="submit">{{ '♥' if c.id in liked_ids else '♡' }} {{ c.likes }}</button>
+      <button class="btn btn-outline btn-sm js-like-btn{{ ' is-liked' if c.id in liked_ids else '' }}" type="submit"><span class="heart">{{ '♥' if c.id in liked_ids else '♡' }}</span> <span class="like-count">{{ c.likes }}</span></button>
     </form>
   </article>
   {% endfor %}

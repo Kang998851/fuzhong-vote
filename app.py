@@ -16,7 +16,8 @@ from zoneinfo import ZoneInfo
 from functools import wraps
 
 from flask import (Flask, g, request, session, redirect, url_for,
-                   render_template, flash, abort, send_file, Response)
+                   render_template, flash, abort, send_file, Response,
+                   jsonify)
 from werkzeug.security import generate_password_hash, check_password_hash
 
 try:
@@ -280,6 +281,11 @@ def login_required(view):
     return wrapper
 
 
+def wants_json():
+    """前端 fetch 动画请求：带 X-Requested-With 头时返回 JSON 而非整页跳转。"""
+    return request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+
 def admin_required(view):
     @wraps(view)
     def wrapper(*a, **kw):
@@ -517,10 +523,16 @@ def forum_like(pid):
                   (me["id"], pid)).fetchone():
         db.execute("DELETE FROM post_likes WHERE user_id=? AND post_id=?",
                    (me["id"], pid))
+        liked = False
     else:
         db.execute("INSERT INTO post_likes(user_id, post_id) VALUES(?,?)",
                    (me["id"], pid))
+        liked = True
     db.commit()
+    if wants_json():
+        n = db.execute("SELECT COUNT(*) AS c FROM post_likes WHERE post_id=?",
+                       (pid,)).fetchone()["c"]
+        return jsonify(ok=True, liked=liked, likes=n)
     return redirect(url_for("forum_detail", pid=pid))
 
 
@@ -571,10 +583,16 @@ def confess_like(cid):
                   (me["id"], cid)).fetchone():
         db.execute("DELETE FROM confession_likes WHERE user_id=? AND confession_id=?",
                    (me["id"], cid))
+        liked = False
     else:
         db.execute("INSERT INTO confession_likes(user_id, confession_id) VALUES(?,?)",
                    (me["id"], cid))
+        liked = True
     db.commit()
+    if wants_json():
+        n = db.execute("SELECT COUNT(*) AS c FROM confession_likes"
+                       " WHERE confession_id=?", (cid,)).fetchone()["c"]
+        return jsonify(ok=True, liked=liked, likes=n)
     return redirect(url_for("confess", sort=request.args.get("sort", "new")))
 
 
@@ -637,12 +655,16 @@ def vote():
 @login_required
 def vote_cast():
     if vote_closed_flag():
+        if wants_json():
+            return jsonify(ok=False, error="投票已截止"), 400
         flash("投票已截止", "error")
         return redirect(url_for("vote"))
     cid = request.form.get("candidate_id", type=int)
     db = get_db()
     cand = db.execute("SELECT * FROM candidates WHERE id=?", (cid,)).fetchone()
     if not cand:
+        if wants_json():
+            return jsonify(ok=False, error="候选人不存在"), 400
         flash("候选人不存在", "error")
         return redirect(url_for("vote"))
     me = current_user()
@@ -657,7 +679,13 @@ def vote_cast():
         " VALUES(?,?,?,?,?)",
         (me["id"], cid, cand["board"], day, now_str()))
     db.commit()
-    if old and old["candidate_id"] != cid:
+    changed = bool(old and old["candidate_id"] != cid)
+    if wants_json():
+        n = db.execute("SELECT COUNT(*) AS c FROM votes WHERE candidate_id=?",
+                       (cid,)).fetchone()["c"]
+        return jsonify(ok=True, candidate_id=cid, board=cand["board"],
+                       changed=changed, votes=n)
+    if changed:
         flash("改投成功！", "ok")
     else:
         flash("投票成功！", "ok")

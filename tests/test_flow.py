@@ -84,7 +84,16 @@ def main():
     check("回帖成功", "测试回帖" in r.get_data(as_text=True))
     r = c.post(f"/forum/{pid}/like", data={"csrf_token": t},
                follow_redirects=True)
-    check("点赞成功", "♥ 已赞 1" in r.get_data(as_text=True) or "已赞" in r.get_data(as_text=True))
+    check("点赞成功", "is-liked" in r.get_data(as_text=True))
+    # AJAX 点赞：返回 JSON，再点一次取消
+    r = c.post(f"/forum/{pid}/like", data={"csrf_token": t},
+               headers={"X-Requested-With": "XMLHttpRequest"})
+    d = r.get_json()
+    check("AJAX 取消点赞 JSON", d["ok"] and d["liked"] is False and d["likes"] == 0)
+    r = c.post(f"/forum/{pid}/like", data={"csrf_token": t},
+               headers={"X-Requested-With": "XMLHttpRequest"})
+    d = r.get_json()
+    check("AJAX 点赞 JSON", d["ok"] and d["liked"] is True and d["likes"] == 1)
 
     print("== 表白墙 ==")
     t = token(c, "/confess")
@@ -93,6 +102,10 @@ def main():
     check("表白发布成功", "测试表白内容啦啦" in r.get_data(as_text=True))
     r = c.post("/confess/1/like", data={"csrf_token": t}, follow_redirects=True)
     check("表白点赞成功", r.status_code == 200)
+    r = c.post("/confess/1/like", data={"csrf_token": t},
+               headers={"X-Requested-With": "XMLHttpRequest"})
+    d = r.get_json()
+    check("AJAX 表白取消点赞 JSON", d["ok"] and d["liked"] is False and d["likes"] == 0)
 
     print("== 评选报名（含照片） ==")
     t = token(c, "/vote/signup")
@@ -138,6 +151,13 @@ def main():
     v2 = db.execute("SELECT COUNT(*) FROM votes WHERE candidate_id=2").fetchone()[0]
     check("改投后票数正确(0/1)", v1 == 0 and v2 == 1)
     db.close()
+    # AJAX 投票：改投回一号，返回 JSON
+    t = token(c, "/vote?board=xiaohua")
+    r = c.post("/vote/cast", data={"candidate_id": "1", "csrf_token": t},
+               headers={"X-Requested-With": "XMLHttpRequest"})
+    d = r.get_json()
+    check("AJAX 投票 JSON", d["ok"] and d["candidate_id"] == 1
+          and d["changed"] is True and d["votes"] == 1)
 
     print("== 搜索 ==")
     r = c.get("/search?q=测试帖")
