@@ -191,19 +191,32 @@ a:hover{text-decoration:underline}
 
 /* ---- 移动端 ---- */
 @media (max-width:860px){
+  .app{flex-direction:column}
   .grid-3,.grid-2{grid-template-columns:1fr}
   .topbar{display:flex;align-items:center;gap:12px;background:var(--sidebar);
     padding:12px 16px;position:sticky;top:0;z-index:70;border-bottom:1px solid var(--border)}
   .topbar-brand{display:flex;align-items:center;gap:8px;font-weight:800}
   .topbar-brand img{width:30px;height:30px;object-fit:contain}
   .hamburger{background:none;border:1px solid var(--border);color:var(--text);
-    border-radius:8px;font-size:18px;padding:4px 10px;cursor:pointer}
+    border-radius:8px;font-size:18px;padding:6px 12px;cursor:pointer;min-height:44px}
   .sidebar{position:fixed;left:0;top:0;transform:translateX(-105%);
-    transition:transform .25s;box-shadow:0 0 40px rgba(0,0,0,.5)}
+    transition:transform .25s;box-shadow:0 0 40px rgba(0,0,0,.5);width:240px}
   body.nav-open .sidebar{transform:none}
   body.nav-open .scrim{display:block;position:fixed;inset:0;
     background:rgba(0,0,0,.55);z-index:55}
-  .main{padding:16px}
+  .side-nav a{padding:13px 12px;font-size:15px}
+  .main{padding:14px}
+  .card{padding:18px}
+  .card-title{font-size:18px}
   .countdown{font-size:28px}
+  .comm-tiles{grid-template-columns:1fr}
+  .confess-grid{grid-template-columns:1fr}
   .cand-row{flex-wrap:wrap}
+  .cand-photo{width:52px;height:52px}
+  .cand-vote{flex-direction:row;align-items:center;width:100%;justify-content:space-between}
+  .post-body,.confess-body,.notice-list p{overflow-wrap:anywhere}
+  .form input[type=text],.form input[type=password],.form textarea,.form select,
+  .search-big input{font-size:16px}
+  .btn:not(.btn-xs){min-height:44px}
+  .footer-logo{max-width:220px;width:80%}
 }
