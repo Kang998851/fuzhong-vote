@@ -1,5 +1,59 @@
-// 附中墙 · 前端小脚本：移动端菜单、倒计时、照片预览
+// 附中墙 · 前端小脚本：移动端菜单、倒计时、照片预览、设备指纹
 (function () {
+  // 设备指纹：防刷票关联同一设备的多个账号（canvas+WebGL+硬件特征哈希）。
+  // 结果存 cookie（did），后端在注册/投票时记录。无痕模式下指纹依然稳定。
+  function deviceId() {
+    try {
+      var parts = [];
+      parts.push(navigator.userAgent || "");
+      parts.push(navigator.platform || "");
+      parts.push(navigator.language || "");
+      parts.push((navigator.languages || []).join(","));
+      parts.push(screen.width + "x" + screen.height + "x" + screen.colorDepth);
+      parts.push(new Date().getTimezoneOffset());
+      parts.push(navigator.hardwareConcurrency || "");
+      parts.push(navigator.deviceMemory || "");
+      parts.push(navigator.maxTouchPoints || "");
+      try {
+        var c = document.createElement("canvas");
+        c.width = 200; c.height = 50;
+        var x = c.getContext("2d");
+        x.textBaseline = "top";
+        x.font = "14px Arial";
+        x.fillStyle = "#f60"; x.fillRect(0, 0, 200, 50);
+        x.fillStyle = "#069";
+        x.fillText("fuzhong-wall 123", 2, 15);
+        x.fillStyle = "rgba(102,204,0,0.7)";
+        x.fillText("fuzhong-wall 123", 4, 17);
+        parts.push(c.toDataURL());
+      } catch (e) { parts.push("nocanvas"); }
+      try {
+        var gc = document.createElement("canvas").getContext("webgl");
+        if (gc) {
+          var dbg = gc.getExtension("WEBGL_debug_renderer_info");
+          parts.push(dbg ? gc.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "nogl");
+        } else { parts.push("nogl"); }
+      } catch (e) { parts.push("nogl"); }
+      var s = parts.join("||"), h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+      for (var i = 0; i < s.length; i++) {
+        var ch = s.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+      }
+      h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^
+           Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+      h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^
+           Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+      return (h2 >>> 0).toString(16) + (h1 >>> 0).toString(16);
+    } catch (e) { return ""; }
+  }
+  try {
+    var did = deviceId();
+    if (did) {
+      document.cookie = "did=" + did + "; Max-Age=31536000; Path=/; SameSite=Lax";
+    }
+  } catch (e) {}
+
   // 移动端边栏开关
   var btn = document.getElementById('hamburger');
   var scrim = document.getElementById('scrim');

@@ -245,7 +245,8 @@ def main():
 
     print("== 管理后台 ==")
     c.post("/logout", data={"csrf_token": token(c, "/")})
-    # 注册两个小号，制造同 IP 多账号场景
+    # 注册两个小号，制造同 IP 多账号场景（同一设备指纹）
+    c.set_cookie("did", "testdeviceABC")
     for _u2 in ("brush1", "brush2"):
         t = token(c, "/register")
         c.post("/register", data={"username": _u2, "password": "pw123456",
@@ -259,6 +260,12 @@ def main():
     check("后台看到用户反馈", "希望增加暗色模式" in r.get_data(as_text=True))
     check("IP 审计区列出多账号 IP", "IP 审计" in r.get_data(as_text=True)
           and "127.0.0.1" in r.get_data(as_text=True))
+    check("设备审计区列出关联设备", "设备关联" in r.get_data(as_text=True)
+          and "testdeviceAB" in r.get_data(as_text=True))
+    _db = sqlite3.connect(os.path.join(tmp, "test.db"))
+    _d = _db.execute("SELECT reg_device FROM users WHERE username='brush1'").fetchone()
+    check("注册记录设备指纹", _d and _d[0] == "testdeviceABC")
+    _db.close()
     # 小号 brush1 刷一票，管理员清票
     _db = sqlite3.connect(os.path.join(tmp, "test.db"))
     _brush = _db.execute("SELECT id FROM users WHERE username='brush1'").fetchone()[0]
@@ -269,6 +276,11 @@ def main():
                            "csrf_token": t})
     t = token(c, "/vote?board=xiaohua")
     c.post("/vote/cast", data={"candidate_id": "2", "csrf_token": t})
+    _db = sqlite3.connect(os.path.join(tmp, "test.db"))
+    _vd = _db.execute("SELECT device FROM votes WHERE user_id=?",
+                      (_brush,)).fetchone()
+    _db.close()
+    check("投票记录设备指纹", _vd and _vd[0] == "testdeviceABC")
     c.post("/logout", data={"csrf_token": token(c, "/")})
     t = token(c, "/login")
     c.post("/login", data={"username": "admin", "password": "admin12345",

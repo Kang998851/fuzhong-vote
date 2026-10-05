@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS users(
     password_hash TEXT NOT NULL,
     is_admin INTEGER NOT NULL DEFAULT 0,
     reg_ip TEXT NOT NULL DEFAULT '',
+    reg_device TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS announcements(
@@ -156,6 +157,7 @@ CREATE TABLE IF NOT EXISTS votes(
     board TEXT NOT NULL,
     day TEXT NOT NULL,
     ip TEXT NOT NULL DEFAULT '',
+    device TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     UNIQUE(user_id, board, day)
 );
@@ -367,7 +369,8 @@ def init_db():
     if not _exists2:
         db.execute("ALTER TABLE candidates ADD COLUMN extra_votes INTEGER NOT NULL DEFAULT 0")
     # 存量库补列：记录注册 IP / 投票 IP（防刷票审计）
-    for _table, _col in (("users", "reg_ip"), ("votes", "ip")):
+    for _table, _col in (("users", "reg_ip"), ("votes", "ip"),
+                         ("users", "reg_device"), ("votes", "device")):
         if USE_PG:
             _ex = db.execute(
                 "SELECT 1 FROM information_schema.columns"
@@ -569,9 +572,10 @@ def register():
                 ip = client_ip()
                 ip_region(ip)  # 注册时解析属地并缓存（失败则记"未知"，不阻塞注册）
                 cur = db.execute(
-                    "INSERT INTO users(username, password_hash, reg_ip, created_at)"
-                    " VALUES(?,?,?,?)",
-                    (username, generate_password_hash(password), ip, now_str()))
+                    "INSERT INTO users(username, password_hash, reg_ip, reg_device,"
+                    " created_at) VALUES(?,?,?,?,?)",
+                    (username, generate_password_hash(password), ip,
+                     request.cookies.get("did", "")[:64], now_str()))
                 db.commit()
                 session["user_id"] = cur.lastrowid
                 flash(f"欢迎，{username}！", "ok")
@@ -1016,9 +1020,10 @@ def vote_cast():
     db.execute("DELETE FROM votes WHERE user_id=? AND board=? AND day=?",
                (me["id"], cand["board"], day))
     db.execute(
-        "INSERT INTO votes(user_id, candidate_id, board, day, ip, created_at)"
-        " VALUES(?,?,?,?,?,?)",
-        (me["id"], cid, cand["board"], day, client_ip(), now_str()))
+        "INSERT INTO votes(user_id, candidate_id, board, day, ip, device, created_at)"
+        " VALUES(?,?,?,?,?,?,?)",
+        (me["id"], cid, cand["board"], day, client_ip(),
+         request.cookies.get("did", "")[:64], now_str()))
     db.commit()
     changed = bool(old and old["candidate_id"] != cid)
     if wants_json():
@@ -1206,10 +1211,29 @@ def admin():
     ip_audit.sort(key=lambda x: (not x["suspicious"], -x["burst"],
                                  -len(x["accounts"])))
     ip_audit = ip_audit[:30]
+    # 设备审计：同一设备指纹注册 ≥2 个账号（比同 IP 更强的刷票信号）
+    _votes_dev = {r["device"]: r["c"] for r in db.execute(
+        "SELECT device, COUNT(*) c FROM votes WHERE device<>'' GROUP BY device").fetchall()}
+    _dgroups = {}
+    for u in db.execute(
+            "SELECT id, username, is_admin, reg_ip, reg_device, created_at FROM users"
+            " WHERE reg_device<>'' ORDER BY reg_device, id").fetchall():
+        _dgroups.setdefault(u["reg_device"], []).append(u)
+    device_audit = []
+    for dev, accs in _dgroups.items():
+        if len(accs) < 2:
+            continue
+        device_audit.append({
+            "device": dev, "accounts": accs,
+            "votes": _votes_dev.get(dev, 0),
+            "region": cached_region(accs[0]["reg_ip"])})
+    device_audit.sort(key=lambda x: (-len(x["accounts"]), -x["votes"]))
+    device_audit = device_audit[:30]
     return render_template("admin.html", stats=stats, tops=tops,
                            announcements=announcements, users=users,
                            feedbacks=feedbacks, type_names=FEEDBACK_TYPE_NAMES,
-                           blocked_words=blocked_words, ip_audit=ip_audit)
+                           blocked_words=blocked_words, ip_audit=ip_audit,
+                           device_audit=device_audit)
 
 
 @app.route("/admin/purge-votes/<int:uid>", methods=["POST"])

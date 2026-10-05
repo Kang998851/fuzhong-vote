@@ -88,6 +88,37 @@
 </section>
 
 <section class="card">
+  <div class="card-label">/ DEVICE AUDIT</div>
+  <h2 class="card-title">设备关联（防刷票）</h2>
+  <p class="dim">同一台设备（手机/电脑）注册了 ≥2 个账号。设备指纹比 IP 更准：正常情况下一台设备就是一个人，标红的请重点核查。</p>
+  {% if device_audit %}
+  <ul class="mini-list">
+    {% for g in device_audit %}
+    <li style="border-left:3px solid #c0392b;padding-left:8px">
+      <b>设备 {{ g.device[:12] }}…</b>
+      <span class="dim">属地 {{ g.region or '未知' }}</span>
+      <span class="dim">{{ g.accounts|length }} 个账号 / {{ g.votes }} 票</span>
+      <ul class="dim">
+        {% for a in g.accounts %}
+        <li>{{ a.username }}{% if a.is_admin %}（管理员）{% endif %} · 注册 {{ a.created_at[:16] if a.created_at else '' }} · IP {{ a.reg_ip }}
+          {% if not a.is_admin %}
+          <form action="{{ url_for('admin_purge_votes', uid=a.id) }}" method="post" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-xs" onclick="return confirm('确定清除 {{ a.username }} 的全部投票？')">清票</button>
+          </form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="dim">暂无多账号共用设备。</p>
+  {% endif %}
+</section>
+
+<section class="card">
   <div class="card-label">/ FEEDBACK</div>
   <h2 class="card-title">意见反馈</h2>
   {% if feedbacks %}
