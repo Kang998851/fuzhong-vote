@@ -1,0 +1,22 @@
+# 附中墙 systemd 服务样例
+# 复制到 /etc/systemd/system/school-vote.service，按注释改路径后：
+#   sudo systemctl daemon-reload && sudo systemctl enable --now school-vote
+[Unit]
+Description=附中墙校园社区站 (Flask + gunicorn)
+After=network.target
+
+[Service]
+# TODO: 改成实际部署用户和代码目录
+User=www-data
+WorkingDirectory=/srv/school-vote-deploy
+# TODO: 按需设置环境变量（SECRET_KEY 生产务必更换；DATABASE_URL 留空=SQLite）
+Environment=SECRET_KEY=请换成随机长字符串
+Environment=VOTE_DEADLINE=2026-10-07 23:59
+# 建议用 venv；示例假设 venv 建在代码目录下 .venv
+ExecStart=/srv/school-vote-deploy/.venv/bin/gunicorn app:app \
+  --bind 127.0.0.1:5000 --workers 3 --timeout 60
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
