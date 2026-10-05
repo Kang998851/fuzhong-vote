@@ -5,20 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}附中墙{% endblock %} · 太原师范学院附属中学</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<link rel="icon" href="{{ url_for('static', filename='img/logo-mark.png') }}">
+<link rel="icon" href="{{ url_for('logo_mark_img') }}">
 </head>
 <body>
 <div class="app">
   <!-- 移动端顶栏 -->
   <header class="topbar">
     <button class="hamburger" id="hamburger" aria-label="菜单">☰</button>
-    <span class="topbar-brand"><img src="{{ url_for('static', filename='img/logo-mark.png') }}" alt="校徽">附中墙</span>
+    <span class="topbar-brand"><img src="{{ url_for('logo_mark_img') }}" alt="校徽">附中墙</span>
   </header>
 
   <!-- 左侧边栏 -->
   <aside class="sidebar" id="sidebar">
     <div class="side-logo">
-      <img src="{{ url_for('static', filename='img/logo-mark.png') }}" alt="太原师范学院附属中学校徽">
+      <img src="{{ url_for('logo_mark_img') }}" alt="太原师范学院附属中学校徽">
       <div>
         <b>附中墙</b>
         <small>太原师范学院附属中学 · 校园论坛</small>
@@ -78,7 +78,7 @@
     {% block content %}{% endblock %}
 
     <footer class="footer">
-      <img src="{{ url_for('static', filename='img/logo-full.png') }}" alt="太原师范学院附属中学" class="footer-logo">
+      <img src="{{ url_for('logo_full_img') }}" alt="太原师范学院附属中学" class="footer-logo">
       <p>附中墙 · 太原师范学院附属中学同学自建的校园小站</p>
       <p class="dim">发帖请遵守校规，友善交流。有违规内容可以举报，管理员会处理。</p>
     </footer>

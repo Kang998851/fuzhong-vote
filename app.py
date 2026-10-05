@@ -5,15 +5,18 @@
 Flask + SQLite 单文件应用，无构建步骤，python app.py 即可运行。
 """
 import os
+import base64
 import sqlite3
 import uuid
 import secrets
 from datetime import datetime
+from io import BytesIO
 from zoneinfo import ZoneInfo
 from functools import wraps
 
 from flask import (Flask, g, request, session, redirect, url_for,
-                   render_template, flash, send_from_directory, abort)
+                   render_template, flash, send_from_directory, abort,
+                   send_file)
 from werkzeug.security import generate_password_hash, check_password_hash
 
 try:
@@ -291,6 +294,24 @@ def inject_common():
         deadline_iso=dl.isoformat(),
         now_str=now_str,
     )
+
+
+# ---------- 校徽图片（base64 内嵌：推送工具链无法正确处理二进制文件，故由服务端解码输出） ----------
+try:
+    from logo_mark import LOGO_MARK_B64
+    from logo_full import LOGO_FULL_B64
+except ImportError:  # pragma: no cover
+    LOGO_MARK_B64 = LOGO_FULL_B64 = ""
+
+
+@app.route("/img/logo-mark.png")
+def logo_mark_img():
+    return send_file(BytesIO(base64.b64decode(LOGO_MARK_B64)), mimetype="image/png")
+
+
+@app.route("/img/logo-full.png")
+def logo_full_img():
+    return send_file(BytesIO(base64.b64decode(LOGO_FULL_B64)), mimetype="image/png")
 
 
 # ---------- 账号 ----------
