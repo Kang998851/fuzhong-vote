@@ -23,8 +23,8 @@
   <ul class="cand-list">
     {% for c in candidates %}
     <li class="cand-row">
-      {% if c.photo %}
-      <img class="cand-photo" src="{{ url_for('uploaded_file', name=c.photo) }}" alt="{{ c.name }}">
+      {% if c.has_photo %}
+      <img class="cand-photo" src="{{ url_for('candidate_photo', cid=c.id) }}" alt="{{ c.name }}" loading="lazy">
       {% else %}
       <div class="cand-photo cand-ph">{{ c.name[0] }}</div>
       {% endif %}

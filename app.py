@@ -7,7 +7,6 @@ Flask + SQLite 单文件应用，无构建步骤，python app.py 即可运行。
 import os
 import base64
 import sqlite3
-import uuid
 import secrets
 from datetime import datetime
 from io import BytesIO
@@ -15,8 +14,7 @@ from zoneinfo import ZoneInfo
 from functools import wraps
 
 from flask import (Flask, g, request, session, redirect, url_for,
-                   render_template, flash, send_from_directory, abort,
-                   send_file)
+                   render_template, flash, abort, send_file)
 from werkzeug.security import generate_password_hash, check_password_hash
 
 try:
@@ -104,6 +102,8 @@ CREATE TABLE IF NOT EXISTS candidates(
     class_name TEXT NOT NULL,
     slogan TEXT NOT NULL,
     photo TEXT NOT NULL,
+    photo_data BYTEA,
+    photo_mime TEXT,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS votes(
@@ -221,6 +221,18 @@ def close_db(exc):
 def init_db():
     db = get_db()
     db.executescript(build_schema())
+    # 存量库补列：照片改存数据库后，老表没有 photo_data / photo_mime
+    for col, ddl in (("photo_data", "BYTEA"), ("photo_mime", "TEXT")):
+        if USE_PG:
+            exists = db.execute(
+                "SELECT 1 FROM information_schema.columns"
+                " WHERE table_name=? AND column_name=?",
+                ("candidates", col)).fetchone()
+        else:
+            exists = any(r["name"] == col
+                         for r in db.execute("PRAGMA table_info(candidates)").fetchall())
+        if not exists:
+            db.execute(f"ALTER TABLE candidates ADD COLUMN {col} {ddl}")
     row = db.execute("SELECT id FROM users WHERE username='admin'").fetchone()
     if not row:
         db.execute(
@@ -379,7 +391,8 @@ def index():
     tops = {}
     for code, _name in BOARDS:
         tops[code] = db.execute(
-            """SELECT c.*, (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
+            """SELECT c.id, c.name, c.class_name,
+               (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
                FROM candidates c WHERE c.board=?
                ORDER BY votes DESC, c.id LIMIT 3""", (code,)).fetchall()
     return render_template("index.html", announcements=announcements,
@@ -560,7 +573,8 @@ def search():
             "SELECT * FROM confessions WHERE body LIKE ? OR nickname LIKE ?"
             " ORDER BY id DESC LIMIT 20", (like, like)).fetchall()
         candidates = db.execute(
-            """SELECT c.*, (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
+            """SELECT c.id, c.board, c.name, c.class_name, c.slogan,
+               (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
                FROM candidates c
                WHERE c.name LIKE ? OR c.class_name LIKE ? OR c.slogan LIKE ?
                ORDER BY votes DESC, c.id LIMIT 20""",
@@ -572,7 +586,9 @@ def search():
 # ---------- 评选 ----------
 def board_candidates(board):
     return get_db().execute(
-        """SELECT c.*, (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
+        """SELECT c.id, c.user_id, c.board, c.name, c.class_name, c.slogan, c.created_at,
+           (c.photo_data IS NOT NULL) AS has_photo,
+           (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
            FROM candidates c WHERE c.board=?
            ORDER BY votes DESC, c.id""", (board,)).fetchall()
 
@@ -630,28 +646,27 @@ def vote_closed_flag():
     return datetime.now(TZ) > get_deadline()
 
 
+PHOTO_MIMES = {"jpg": "image/jpeg", "jpeg": "image/jpeg",
+               "png": "image/png", "webp": "image/webp"}
+
+
 def save_photo(file_storage):
-    """校验并保存上传照片，返回存档文件名；失败返回 (None, 错误信息)。"""
+    """校验上传照片，返回 (图片字节, mime, 错误信息)；失败时前两项为 None。"""
     if not file_storage or not file_storage.filename:
-        return None, "请上传照片"
+        return None, None, "请上传照片"
     filename = file_storage.filename
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext not in ALLOWED_EXTS:
-        return None, "仅支持 JPG / PNG / WebP 格式"
+        return None, None, "仅支持 JPG / PNG / WebP 格式"
     data = file_storage.read()
     if len(data) > app.config["MAX_CONTENT_LENGTH"]:
-        return None, "照片不能超过 4MB"
+        return None, None, "照片不能超过 4MB"
     if HAS_PIL:
-        import io
         try:
-            Image.open(io.BytesIO(data)).verify()
+            Image.open(BytesIO(data)).verify()
         except Exception:
-            return None, "照片文件损坏或格式不正确"
-    name = f"{uuid.uuid4().hex}.{ext}"
-    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
-    with open(os.path.join(app.config["UPLOAD_FOLDER"], name), "wb") as f:
-        f.write(data)
-    return name, None
+            return None, None, "照片文件损坏或格式不正确"
+    return data, PHOTO_MIMES[ext], None
 
 
 @app.route("/vote/signup", methods=["GET", "POST"])
@@ -671,25 +686,34 @@ def vote_signup():
         elif not (2 <= len(slogan) <= 100):
             flash("参选宣言需为 2-100 个字符", "error")
         else:
-            photo_name, err = save_photo(request.files.get("photo"))
+            photo_data, photo_mime, err = save_photo(request.files.get("photo"))
             if err:
                 flash(err, "error")
             else:
                 db = get_db()
                 db.execute(
                     "INSERT INTO candidates(user_id, board, name, class_name,"
-                    " slogan, photo, created_at) VALUES(?,?,?,?,?,?,?)",
+                    " slogan, photo, photo_data, photo_mime, created_at)"
+                    " VALUES(?,?,?,?,?,?,?,?,?)",
                     (current_user()["id"], board, name, class_name,
-                     slogan, photo_name, now_str()))
+                     slogan, "", photo_data, photo_mime, now_str()))
                 db.commit()
                 flash("报名成功，已进入榜单！", "ok")
                 return redirect(url_for("vote", board=board))
     return render_template("vote_signup.html")
 
 
-@app.route("/uploads/<path:name>")
-def uploaded_file(name):
-    return send_from_directory(app.config["UPLOAD_FOLDER"], name)
+@app.route("/candidate-photo/<int:cid>")
+def candidate_photo(cid):
+    row = get_db().execute(
+        "SELECT photo_data, photo_mime FROM candidates WHERE id=?", (cid,)).fetchone()
+    if not row or not row["photo_data"]:
+        abort(404)
+    data = row["photo_data"]
+    if isinstance(data, memoryview):
+        data = data.tobytes()
+    return send_file(BytesIO(data), mimetype=row["photo_mime"] or "image/jpeg",
+                     max_age=86400)
 
 
 # ---------- 管理员 ----------
@@ -707,7 +731,8 @@ def admin():
         "announcements": db.execute("SELECT COUNT(*) c FROM announcements").fetchone()["c"],
     }
     tops = {code: db.execute(
-        """SELECT c.*, (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
+        """SELECT c.id, c.name, c.class_name,
+           (SELECT COUNT(*) FROM votes v WHERE v.candidate_id=c.id) AS votes
            FROM candidates c WHERE c.board=?
            ORDER BY votes DESC, c.id LIMIT 5""",
         (code,)).fetchall() for code, _ in BOARDS}
@@ -759,12 +784,6 @@ def admin_delete(kind, oid):
     elif kind == "confession":
         db.execute("DELETE FROM confessions WHERE id=?", (oid,))
     elif kind == "candidate":
-        row = db.execute("SELECT photo FROM candidates WHERE id=?", (oid,)).fetchone()
-        if row:
-            try:
-                os.remove(os.path.join(app.config["UPLOAD_FOLDER"], row["photo"]))
-            except OSError:
-                pass
         db.execute("DELETE FROM candidates WHERE id=?", (oid,))
     elif kind == "announcement":
         db.execute("DELETE FROM announcements WHERE id=?", (oid,))

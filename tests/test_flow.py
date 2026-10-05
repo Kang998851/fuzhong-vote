@@ -103,7 +103,17 @@ def main():
                content_type="multipart/form-data", follow_redirects=True)
     body = r.get_data(as_text=True)
     check("报名成功直上榜", "测试候选人" in body and "报名成功" in body)
-    check("照片已落盘", len(os.listdir(os.path.join(tmp, "uploads"))) == 1)
+    import sqlite3 as _sq3
+    _con = _sq3.connect(os.environ["DATABASE"])
+    _row = _con.execute("SELECT photo_data, photo_mime FROM candidates WHERE name='测试候选人'").fetchone()
+    check("照片已存入数据库", _row is not None and _row[0] is not None and len(_row[0]) > 100
+          and _row[1] == "image/png")
+    _con.close()
+    m = re.search(r"/candidate-photo/(\d+)", body)
+    check("榜单页含照片链接", m is not None)
+    r = c.get(f"/candidate-photo/{m.group(1)}")
+    check("照片可正常访问", r.status_code == 200 and r.content_type == "image/png"
+          and len(r.get_data()) > 100)
 
     print("== 投票 / 改投 ==")
     t = token(c, "/vote?board=xiaohua")
