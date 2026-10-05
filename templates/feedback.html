@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% set active_page = 'feedback' %}
+{% block title %}意见反馈{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <div class="card-label">/ FEEDBACK</div>
+  <h2 class="card-title">意见反馈</h2>
+  <p class="dim">功能建议、遇到的问题、违规内容举报，都可以在这里告诉我们。</p>
+  <form method="post" class="form" style="margin-top:12px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>反馈类型
+      <select name="type">
+        {% for code, label in types %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>反馈内容<textarea name="body" rows="5" required minlength="2" maxlength="1000" placeholder="请详细描述你的建议或遇到的问题"></textarea></label>
+    <label>联系方式（选填）<input type="text" name="contact" maxlength="100" placeholder="如微信号/QQ/手机号，方便我们联系你"></label>
+    <button class="btn btn-primary" type="submit">提交反馈</button>
+  </form>
+</section>
+
+<section class="card narrow">
+  <div class="card-label">/ MINE</div>
+  <h2 class="card-title">我的反馈</h2>
+  {% if mine %}
+  <ul class="mini-list">
+    {% for f in mine %}
+    <li>
+      <span class="tag">{{ type_names[f.type] if f.type in type_names else f.type }}</span>
+      {% if f.status %}<span class="ok-text">已处理</span>{% else %}<span class="dim">待处理</span>{% endif %}
+      <p style="margin-top:6px">{{ f.body }}</p>
+      <div class="dim" style="font-size:12px">{{ f.created_at[:16] }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">你还没有提交过反馈</div>
+  {% endif %}
+</section>
+{% endblock %}

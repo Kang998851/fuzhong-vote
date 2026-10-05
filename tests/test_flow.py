@@ -149,10 +149,27 @@ def main():
     r = c.get("/search?q=不存在xyz")
     check("无结果友好提示", "没有找到" in r.get_data(as_text=True))
 
+    print("== 意见反馈 ==")
+    anon = appmod.app.test_client()
+    check("反馈页需登录", anon.get("/feedback").status_code == 302)
+    t = token(c, "/register")
+    c.post("/register", data={"username": "fbuser", "password": "fbpass123",
+                              "csrf_token": t})
+    t = token(c, "/login")
+    c.post("/login", data={"username": "fbuser", "password": "fbpass123",
+                           "csrf_token": t})
+    t = token(c, "/feedback")
+    r = c.post("/feedback", data={"type": "suggest", "body": "希望增加暗色模式",
+                                  "contact": "", "csrf_token": t},
+               follow_redirects=True)
+    body = r.get_data(as_text=True)
+    check("反馈提交成功", "反馈已提交" in body and "希望增加暗色模式" in body)
+    check("我的反馈显示待处理", "待处理" in body)
+
     print("== 页面无 500 ==")
     for path in ["/", "/forum", "/forum?cat=学习", "/confess", "/search",
                  "/vote", "/vote?board=xiaocao", "/vote?board=mascot",
-                 "/vote/signup", "/register", "/login"]:
+                 "/vote/signup", "/feedback", "/register", "/login"]:
         r = c.get(path)
         check(f"GET {path} -> {r.status_code}", r.status_code == 200)
 
@@ -163,6 +180,25 @@ def main():
                            "csrf_token": t})
     r = c.get("/admin")
     check("管理员后台 200 且有统计", r.status_code == 200 and "数据统计" in r.get_data(as_text=True))
+    check("后台看到用户反馈", "希望增加暗色模式" in r.get_data(as_text=True))
+    m = re.search(r"/admin/feedback/(\d+)/handle", r.get_data(as_text=True))
+    check("反馈处理按钮存在", m is not None)
+    t = token(c, "/admin")
+    r = c.post(f"/admin/feedback/{m.group(1)}/handle", data={"csrf_token": t},
+               follow_redirects=True)
+    check("反馈标为已处理", "已处理" in r.get_data(as_text=True))
+
+    print("== 数据备份 ==")
+    r = c.get("/admin/backup")
+    check("备份下载 200", r.status_code == 200)
+    import json as _json
+    dump = _json.loads(r.get_data(as_text=True))
+    check("备份含全部表", set(["users", "forum_posts", "confessions",
+                             "candidates", "votes", "feedbacks"]) <= set(dump["tables"].keys()))
+    check("备份含反馈数据", any(f["body"] == "希望增加暗色模式"
+                             for f in dump["tables"]["feedbacks"]))
+    c2 = appmod.app.test_client()
+    check("备份拒绝未登录", c2.get("/admin/backup").status_code == 403)
 
     print(f"\n全部通过：{len(passed)} 项 ✓")
 

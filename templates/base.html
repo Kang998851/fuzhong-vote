@@ -41,6 +41,8 @@
         <span class="nav-ico">⌕</span>搜索</a>
       <a href="{{ url_for('vote') }}" class="{{ 'active' if active_page=='vote' else '' }}">
         <span class="nav-ico">🏆</span>评选</a>
+      <a href="{{ url_for('feedback') }}" class="{{ 'active' if active_page=='feedback' else '' }}">
+        <span class="nav-ico">✉</span>反馈</a>
       {% if me and me.is_admin %}
       <a href="{{ url_for('admin') }}" class="{{ 'active' if active_page=='admin' else '' }}">
         <span class="nav-ico">⚙</span>管理</a>

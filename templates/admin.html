@@ -12,6 +12,11 @@
     <div class="stat"><b>{{ stats.confesses }}</b><span>表白</span></div>
     <div class="stat"><b>{{ stats.candidates }}</b><span>候选人</span></div>
     <div class="stat"><b>{{ stats.votes }}</b><span>总票数</span></div>
+    <div class="stat"><b>{{ stats.feedbacks_open }}</b><span>待处理反馈</span></div>
+  </div>
+  <div style="margin-top:12px">
+    <a class="btn btn-sm" href="{{ url_for('admin_backup') }}">⬇ 下载数据备份（JSON）</a>
+    <p class="dim" style="font-size:12px;margin-top:6px">包含全部用户、帖子、表白、候选人（含照片）、投票与反馈数据。建议定期下载保存到自己电脑。</p>
   </div>
   {% for code, label in boards %}
   {% if tops[code] %}
@@ -44,6 +49,38 @@
     </li>
     {% endfor %}
   </ul>
+</section>
+
+<section class="card">
+  <div class="card-label">/ FEEDBACK</div>
+  <h2 class="card-title">意见反馈</h2>
+  {% if feedbacks %}
+  <ul class="mini-list">
+    {% for f in feedbacks %}
+    <li>
+      <span class="tag">{{ type_names[f.type] if f.type in type_names else f.type }}</span>
+      {% if f.status %}<span class="ok-text">已处理</span>{% else %}<b style="color:#E8A33D">待处理</b>{% endif %}
+      <span class="dim">{{ f.username }} · {{ f.created_at[:16] }}</span>
+      {% if f.contact %}<span class="dim">联系：{{ f.contact }}</span>{% endif %}
+      <p style="margin-top:6px">{{ f.body }}</p>
+      <div style="margin-top:6px">
+        {% if not f.status %}
+        <form action="{{ url_for('admin_feedback_handle', fid=f.id) }}" method="post" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-xs">标为已处理</button>
+        </form>
+        {% endif %}
+        <form action="{{ url_for('admin_delete', kind='feedback', oid=f.id) }}" method="post" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-xs" onclick="return confirm('确定删除这条反馈？')">删除</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">暂无反馈</div>
+  {% endif %}
 </section>
 
 <section class="card">

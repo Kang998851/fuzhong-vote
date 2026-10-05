@@ -6,6 +6,7 @@ Flask + SQLite 单文件应用，无构建步骤，python app.py 即可运行。
 """
 import os
 import base64
+import json
 import sqlite3
 import secrets
 from datetime import datetime
@@ -14,7 +15,7 @@ from zoneinfo import ZoneInfo
 from functools import wraps
 
 from flask import (Flask, g, request, session, redirect, url_for,
-                   render_template, flash, abort, send_file)
+                   render_template, flash, abort, send_file, Response)
 from werkzeug.security import generate_password_hash, check_password_hash
 
 try:
@@ -36,7 +37,6 @@ app = Flask(__name__)
 app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY", "dev-insecure-change-me"),
     DATABASE=os.environ.get("DATABASE", os.path.join(BASE_DIR, "data", "app.db")),
-    UPLOAD_FOLDER=os.environ.get("UPLOAD_FOLDER", os.path.join(BASE_DIR, "uploads")),
     MAX_CONTENT_LENGTH=4 * 1024 * 1024,  # 上传上限 4MB
 )
 
@@ -44,6 +44,9 @@ ALLOWED_EXTS = {"jpg", "jpeg", "png", "webp"}
 BOARDS = [("xiaohua", "校花"), ("xiaocao", "校草"), ("mascot", "吉祥物")]
 BOARD_NAMES = dict(BOARDS)
 CATEGORIES = ["学习", "生活", "活动", "树洞"]
+FEEDBACK_TYPES = [("suggest", "功能建议"), ("bug", "问题反馈"),
+                  ("report", "内容举报"), ("other", "其他")]
+FEEDBACK_TYPE_NAMES = dict(FEEDBACK_TYPES)
 
 # 数据库切换：默认 SQLite（本地/自有服务器）；设置 DATABASE_URL 环境变量则用 Postgres（Render）
 USE_PG = bool(os.environ.get("DATABASE_URL"))
@@ -114,6 +117,15 @@ CREATE TABLE IF NOT EXISTS votes(
     day TEXT NOT NULL,
     created_at TEXT NOT NULL,
     UNIQUE(user_id, board, day)
+);
+CREATE TABLE IF NOT EXISTS feedbacks(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    body TEXT NOT NULL,
+    contact TEXT NOT NULL DEFAULT '',
+    status INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
 );
 """
 
@@ -716,6 +728,37 @@ def candidate_photo(cid):
                      max_age=86400)
 
 
+# ---------- 意见反馈 ----------
+@app.route("/feedback", methods=["GET", "POST"])
+@login_required
+def feedback():
+    me = current_user()
+    db = get_db()
+    if request.method == "POST":
+        ftype = request.form.get("type", "")
+        body = request.form.get("body", "").strip()
+        contact = request.form.get("contact", "").strip()
+        if ftype not in FEEDBACK_TYPE_NAMES:
+            flash("请选择反馈类型", "error")
+        elif not (2 <= len(body) <= 1000):
+            flash("反馈内容需为 2-1000 个字符", "error")
+        elif len(contact) > 100:
+            flash("联系方式过长", "error")
+        else:
+            db.execute(
+                "INSERT INTO feedbacks(user_id, type, body, contact, created_at)"
+                " VALUES(?,?,?,?,?)",
+                (me["id"], ftype, body, contact, now_str()))
+            db.commit()
+            flash("反馈已提交，感谢你的建议！", "ok")
+            return redirect(url_for("feedback"))
+    mine = db.execute(
+        "SELECT * FROM feedbacks WHERE user_id=? ORDER BY id DESC",
+        (me["id"],)).fetchall()
+    return render_template("feedback.html", types=FEEDBACK_TYPES,
+                           type_names=FEEDBACK_TYPE_NAMES, mine=mine)
+
+
 # ---------- 管理员 ----------
 @app.route("/admin")
 @admin_required
@@ -740,8 +783,16 @@ def admin():
         "SELECT * FROM announcements ORDER BY id DESC").fetchall()
     users = db.execute(
         "SELECT id, username, is_admin, created_at FROM users ORDER BY id").fetchall()
+    feedbacks = db.execute(
+        """SELECT f.*, u.username FROM feedbacks f
+           JOIN users u ON u.id=f.user_id
+           ORDER BY f.status, f.id DESC""").fetchall()
+    stats["feedbacks"] = db.execute("SELECT COUNT(*) c FROM feedbacks").fetchone()["c"]
+    stats["feedbacks_open"] = db.execute(
+        "SELECT COUNT(*) c FROM feedbacks WHERE status=0").fetchone()["c"]
     return render_template("admin.html", stats=stats, tops=tops,
-                           announcements=announcements, users=users)
+                           announcements=announcements, users=users,
+                           feedbacks=feedbacks, type_names=FEEDBACK_TYPE_NAMES)
 
 
 @app.route("/admin/user/<int:uid>/reset-password", methods=["POST"])
@@ -757,6 +808,50 @@ def admin_reset_password(uid):
     db.commit()
     flash(f"用户 {row['username']} 的密码已重置为：{temp}（请复制后立即告知对方，对方可用此密码登录）", "ok")
     return redirect(url_for("admin"))
+
+
+@app.route("/admin/feedback/<int:fid>/handle", methods=["POST"])
+@admin_required
+def admin_feedback_handle(fid):
+    db = get_db()
+    db.execute("UPDATE feedbacks SET status=1 WHERE id=?", (fid,))
+    db.commit()
+    flash("已标记为已处理", "ok")
+    return redirect(url_for("admin"))
+
+
+BACKUP_TABLES = ["users", "announcements", "forum_posts", "forum_replies",
+                 "post_likes", "confessions", "confession_likes",
+                 "candidates", "votes", "feedbacks"]
+
+
+@app.route("/admin/backup")
+def admin_backup():
+    """下载全站数据备份（JSON）。管理员会话可直接下载；
+    设置 BACKUP_TOKEN 环境变量后，自动备份任务可用 ?token=xxx 下载。"""
+    token = request.args.get("token", "")
+    backup_token = os.environ.get("BACKUP_TOKEN", "")
+    authed = bool(backup_token) and secrets.compare_digest(token, backup_token)
+    if not authed:
+        me = current_user()
+        if not me or not me["is_admin"]:
+            abort(403)
+    db = get_db()
+    dump = {"exported_at": now_str(), "tables": {}}
+    for t in BACKUP_TABLES:
+        try:
+            rows = db.execute(f"SELECT * FROM {t}").fetchall()
+        except Exception:
+            continue
+        dump["tables"][t] = [dict(r) for r in rows]
+    for c in dump["tables"].get("candidates", []):
+        d = c.get("photo_data")
+        if d is not None:
+            c["photo_data"] = base64.b64encode(bytes(d)).decode("ascii")
+    payload = json.dumps(dump, ensure_ascii=False)
+    fname = "fuzhong-backup-%s.json" % datetime.now(TZ).strftime("%Y%m%d-%H%M%S")
+    return Response(payload, mimetype="application/json",
+                    headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 
 @app.route("/admin/announce", methods=["POST"])
@@ -787,6 +882,8 @@ def admin_delete(kind, oid):
         db.execute("DELETE FROM candidates WHERE id=?", (oid,))
     elif kind == "announcement":
         db.execute("DELETE FROM announcements WHERE id=?", (oid,))
+    elif kind == "feedback":
+        db.execute("DELETE FROM feedbacks WHERE id=?", (oid,))
     else:
         abort(400)
     db.commit()
