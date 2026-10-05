@@ -191,8 +191,13 @@ TABLES_WITH_ID = frozenset(["users", "announcements", "polls", "poll_options",
                             "votes", "feedbacks"])
 
 # 默认屏蔽词（管理员可在后台增删）
-DEFAULT_BLOCKED_WORDS = ["操你妈", "肏你妈", "傻逼", "贱人", "婊子",
-                         "母狗", "脑残", "智障", "日你妈", "操蛋"]
+DEFAULT_BLOCKED_WORDS = [
+    "操你妈", "肏你妈", "草泥马", "日你妈", "尼玛", "他妈的",
+    "傻逼", "傻叉", "SB", "脑残", "脑瘫", "智障", "蠢货", "废物",
+    "贱人", "贱货", "婊子", "绿茶婊", "圣母婊", "骚货",
+    "母狗", "舔狗", "操蛋", "王八蛋", "狗东西", "畜生",
+    "丑逼", "丑八怪", "死胖子", "滚蛋",
+]
 
 
 def get_blocked_words(db):
