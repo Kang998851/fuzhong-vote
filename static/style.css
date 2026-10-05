@@ -148,18 +148,18 @@ a:hover{text-decoration:underline}
 .confess-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
 .confess-card{
   display:flex;flex-direction:column;gap:10px;border:none;
-  background:linear-gradient(135deg,#ffe3ec 0%,#ffc9d9 100%);
-  color:#5c1f36;
+  background:#EE839F;
+  color:#fff;
 }
-.confess-card .dim{color:#96536e}
+.confess-card .dim{color:rgba(255,255,255,.78)}
 .confess-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .confess-badge{
-  font-size:12px;font-weight:700;color:#fff;background:#e14b7a;
+  font-size:12px;font-weight:700;color:#d14e7e;background:#fff;
   padding:3px 10px;border-radius:999px;white-space:nowrap;
 }
-.confess-target{font-size:17px}
-.confess-body{font-size:15px;white-space:pre-wrap}
-.confess-meta{display:flex;justify-content:space-between;font-size:13px}
+.confess-target{font-size:17px;font-weight:800}
+.confess-body{font-size:15px;font-weight:700;white-space:pre-wrap}
+.confess-meta{display:flex;justify-content:space-between;font-size:13px;font-weight:600}
 .kind-pills{display:flex;gap:10px}
 .kind-pill{
   display:inline-flex;align-items:center;gap:6px;cursor:pointer;
