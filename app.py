@@ -121,6 +121,19 @@ CREATE TABLE IF NOT EXISTS confession_likes(
     confession_id INTEGER NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
     PRIMARY KEY(user_id, confession_id)
 );
+CREATE TABLE IF NOT EXISTS confession_comments(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    confession_id INTEGER NOT NULL REFERENCES confessions(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    nickname TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS blocked_words(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    word TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS candidates(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -172,8 +185,32 @@ def build_schema():
 # 对它们 INSERT 时不能追加 RETURNING id）
 TABLES_WITH_ID = frozenset(["users", "announcements", "polls", "poll_options",
                             "poll_votes", "forum_posts",
-                            "forum_replies", "confessions", "candidates",
+                            "forum_replies", "confessions", "confession_comments",
+                            "blocked_words", "candidates",
                             "votes", "feedbacks"])
+
+# 默认屏蔽词（管理员可在后台增删）
+DEFAULT_BLOCKED_WORDS = ["操你妈", "肏你妈", "傻逼", "贱人", "婊子",
+                         "母狗", "脑残", "智障", "日你妈", "操蛋"]
+
+
+def get_blocked_words(db):
+    return [r["word"] for r in
+            db.execute("SELECT word FROM blocked_words ORDER BY id").fetchall()]
+
+
+def find_blocked_word(text, words):
+    low = text.lower()
+    for w in words:
+        if w and w.lower() in low:
+            return w
+    return None
+
+
+def blocked_error(db, *texts):
+    """若任一文本命中屏蔽词，返回报错文案，否则返回 None。"""
+    w = find_blocked_word("\n".join(texts), get_blocked_words(db))
+    return f"内容包含屏蔽词（{w}），请修改后重试" if w else None
 
 
 class Cursor:
@@ -292,6 +329,14 @@ def init_db():
         if not exists:
             db.execute(f"ALTER TABLE confessions ADD COLUMN {col} TEXT")
             db.execute(f"UPDATE confessions SET {col}={default} WHERE {col} IS NULL")
+    # 播种默认屏蔽词（已存在的跳过）
+    for w in DEFAULT_BLOCKED_WORDS:
+        if USE_PG:
+            db.execute("INSERT INTO blocked_words(word, created_at) VALUES(?,?)"
+                       " ON CONFLICT(word) DO NOTHING", (w, now_str()))
+        else:
+            db.execute("INSERT OR IGNORE INTO blocked_words(word, created_at)"
+                       " VALUES(?,?)", (w, now_str()))
     row = db.execute("SELECT id FROM users WHERE username='admin'").fetchone()
     if not row:
         db.execute(
@@ -513,13 +558,17 @@ def forum_new():
             flash("正文至少 5 个字符", "error")
         else:
             db = get_db()
-            cur = db.execute(
-                "INSERT INTO forum_posts(user_id, category, title, body, created_at)"
-                " VALUES(?,?,?,?,?)",
-                (current_user()["id"], category, title, body, now_str()))
-            db.commit()
-            flash("发帖成功", "ok")
-            return redirect(url_for("forum_detail", pid=cur.lastrowid))
+            bad = blocked_error(db, title, body)
+            if bad:
+                flash(bad, "error")
+            else:
+                cur = db.execute(
+                    "INSERT INTO forum_posts(user_id, category, title, body, created_at)"
+                    " VALUES(?,?,?,?,?)",
+                    (current_user()["id"], category, title, body, now_str()))
+                db.commit()
+                flash("发帖成功", "ok")
+                return redirect(url_for("forum_detail", pid=cur.lastrowid))
     return render_template("forum_new.html", categories=CATEGORIES)
 
 
@@ -557,12 +606,17 @@ def forum_reply(pid):
     if len(body) < 2:
         flash("回复内容太短", "error")
     else:
-        db.execute(
-            "INSERT INTO forum_replies(post_id, user_id, body, created_at)"
-            " VALUES(?,?,?,?)",
-            (pid, current_user()["id"], body, now_str()))
-        db.commit()
-        flash("回复成功", "ok")
+        db = get_db()
+        bad = blocked_error(db, body)
+        if bad:
+            flash(bad, "error")
+        else:
+            db.execute(
+                "INSERT INTO forum_replies(post_id, user_id, body, created_at)"
+                " VALUES(?,?,?,?)",
+                (pid, current_user()["id"], body, now_str()))
+            db.commit()
+            flash("回复成功", "ok")
     return redirect(url_for("forum_detail", pid=pid))
 
 
@@ -604,8 +658,13 @@ def confess():
         liked_ids = {r["confession_id"] for r in db.execute(
             "SELECT confession_id FROM confession_likes WHERE user_id=?",
             (me["id"],))}
+    comments = {}
+    for r in db.execute(
+            "SELECT * FROM confession_comments ORDER BY id").fetchall():
+        comments.setdefault(r["confession_id"], []).append(r)
     return render_template("confess.html", confesses=confesses, sort=sort,
-                           liked_ids=liked_ids)
+                           liked_ids=liked_ids, comments=comments,
+                           is_admin=bool(me and me["is_admin"]))
 
 
 @app.route("/confess/new", methods=["POST"])
@@ -623,12 +682,50 @@ def confess_new():
         flash("表白内容需为 2-500 个字符", "error")
     else:
         db = get_db()
-        db.execute(
-            "INSERT INTO confessions(user_id, nickname, target, kind, body, created_at)"
-            " VALUES(?,?,?,?,?,?)",
-            (current_user()["id"], nickname, target, kind, body, now_str()))
-        db.commit()
-        flash("发布成功", "ok")
+        bad = blocked_error(db, nickname, target, body)
+        if bad:
+            flash(bad, "error")
+        else:
+            db.execute(
+                "INSERT INTO confessions(user_id, nickname, target, kind, body, created_at)"
+                " VALUES(?,?,?,?,?,?)",
+                (current_user()["id"], nickname, target, kind, body, now_str()))
+            db.commit()
+            flash("发布成功", "ok")
+    return redirect(url_for("confess"))
+
+
+@app.route("/confess/<int:cid>/comment", methods=["POST"])
+@login_required
+def confess_comment(cid):
+    db = get_db()
+    if not db.execute("SELECT id FROM confessions WHERE id=?", (cid,)).fetchone():
+        if wants_json():
+            return jsonify(ok=False, error="表白不存在"), 404
+        abort(404)
+    nickname = request.form.get("nickname", "").strip()[:20]
+    body = request.form.get("body", "").strip()
+    if not (1 <= len(body) <= 200):
+        if wants_json():
+            return jsonify(ok=False, error="评论需为 1-200 个字符"), 400
+        flash("评论需为 1-200 个字符", "error")
+        return redirect(url_for("confess"))
+    bad = blocked_error(db, nickname, body)
+    if bad:
+        if wants_json():
+            return jsonify(ok=False, error=bad), 400
+        flash(bad, "error")
+        return redirect(url_for("confess"))
+    cur = db.execute(
+        "INSERT INTO confession_comments(confession_id, user_id, nickname, body, created_at)"
+        " VALUES(?,?,?,?,?)",
+        (cid, current_user()["id"], nickname, body, now_str()))
+    db.commit()
+    if wants_json():
+        return jsonify(ok=True, comment={
+            "id": cur.lastrowid, "nickname": nickname or "匿名",
+            "body": body, "created_at": now_str()[:16]})
+    flash("评论成功", "ok")
     return redirect(url_for("confess"))
 
 
@@ -893,13 +990,17 @@ def feedback():
         elif len(contact) > 100:
             flash("联系方式过长", "error")
         else:
-            db.execute(
-                "INSERT INTO feedbacks(user_id, type, body, contact, created_at)"
-                " VALUES(?,?,?,?,?)",
-                (me["id"], ftype, body, contact, now_str()))
-            db.commit()
-            flash("反馈已提交，感谢你的建议！", "ok")
-            return redirect(url_for("feedback"))
+            bad = blocked_error(db, body, contact)
+            if bad:
+                flash(bad, "error")
+            else:
+                db.execute(
+                    "INSERT INTO feedbacks(user_id, type, body, contact, created_at)"
+                    " VALUES(?,?,?,?,?)",
+                    (me["id"], ftype, body, contact, now_str()))
+                db.commit()
+                flash("反馈已提交，感谢你的建议！", "ok")
+                return redirect(url_for("feedback"))
     mine = db.execute(
         "SELECT * FROM feedbacks WHERE user_id=? ORDER BY id DESC",
         (me["id"],)).fetchall()
@@ -938,9 +1039,31 @@ def admin():
     stats["feedbacks"] = db.execute("SELECT COUNT(*) c FROM feedbacks").fetchone()["c"]
     stats["feedbacks_open"] = db.execute(
         "SELECT COUNT(*) c FROM feedbacks WHERE status=0").fetchone()["c"]
+    blocked_words = db.execute(
+        "SELECT * FROM blocked_words ORDER BY id").fetchall()
     return render_template("admin.html", stats=stats, tops=tops,
                            announcements=announcements, users=users,
-                           feedbacks=feedbacks, type_names=FEEDBACK_TYPE_NAMES)
+                           feedbacks=feedbacks, type_names=FEEDBACK_TYPE_NAMES,
+                           blocked_words=blocked_words)
+
+
+@app.route("/admin/blocked-words", methods=["POST"])
+@admin_required
+def admin_blocked_word_add():
+    word = request.form.get("word", "").strip()[:20]
+    if not word:
+        flash("屏蔽词不能为空", "error")
+    else:
+        db = get_db()
+        if USE_PG:
+            db.execute("INSERT INTO blocked_words(word, created_at) VALUES(?,?)"
+                       " ON CONFLICT(word) DO NOTHING", (word, now_str()))
+        else:
+            db.execute("INSERT OR IGNORE INTO blocked_words(word, created_at)"
+                       " VALUES(?,?)", (word, now_str()))
+        db.commit()
+        flash(f"已添加屏蔽词：{word}", "ok")
+    return redirect(url_for("admin"))
 
 
 @app.route("/admin/user/<int:uid>/reset-password", methods=["POST"])
@@ -971,6 +1094,7 @@ def admin_feedback_handle(fid):
 BACKUP_TABLES = ["users", "announcements", "polls", "poll_options",
                  "poll_votes", "forum_posts", "forum_replies",
                  "post_likes", "confessions", "confession_likes",
+                 "confession_comments", "blocked_words",
                  "candidates", "votes", "feedbacks"]
 
 
@@ -1006,6 +1130,7 @@ def admin_backup():
 RESTORE_ORDER = ["users", "announcements", "polls", "poll_options",
                  "poll_votes", "forum_posts", "forum_replies",
                  "post_likes", "confessions", "confession_likes",
+                 "confession_comments", "blocked_words",
                  "candidates", "votes", "feedbacks"]
 # 只有这些表有 id 自增列（关联表 post_likes / confession_likes 没有 id）
 ID_TABLES = TABLES_WITH_ID
@@ -1109,6 +1234,10 @@ def admin_delete(kind, oid):
         db.execute("DELETE FROM announcements WHERE id=?", (oid,))
     elif kind == "feedback":
         db.execute("DELETE FROM feedbacks WHERE id=?", (oid,))
+    elif kind == "comment":
+        db.execute("DELETE FROM confession_comments WHERE id=?", (oid,))
+    elif kind == "blockedword":
+        db.execute("DELETE FROM blocked_words WHERE id=?", (oid,))
     else:
         abort(400)
     db.commit()

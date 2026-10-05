@@ -118,4 +118,27 @@
   </ul>
   {% endif %}
 </section>
+
+<section class="card">
+  <div class="card-label">/ BLOCKED WORDS</div>
+  <h2 class="card-title">屏蔽词管理</h2>
+  <p class="dim">发布表白、评论、帖子、回帖、反馈时命中以下词语将被拦截。</p>
+  <form action="{{ url_for('admin_blocked_word_add') }}" method="post" class="form-row-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="word" required maxlength="20" placeholder="输入屏蔽词" style="flex:1">
+    <button class="btn btn-primary btn-sm" type="submit">添加</button>
+  </form>
+  {% if blocked_words %}
+  <div class="word-tags" style="margin-top:10px">
+    {% for w in blocked_words %}
+    <span class="word-tag">{{ w.word }}
+      <form action="{{ url_for('admin_delete', kind='blockedword', oid=w.id) }}" method="post" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="word-del" title="删除">×</button>
+      </form>
+    </span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

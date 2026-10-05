@@ -307,3 +307,43 @@ a:hover{text-decoration:underline}
 .poll-opt-text{position:relative;z-index:1;flex:1;font-weight:600}
 .poll-meta{position:relative;z-index:1;font-size:12px;color:var(--text2);white-space:nowrap}
 .poll-foot{margin-top:8px;font-size:12px}
+
+/* ---- 表白评论区（粉色卡片） ---- */
+.confess-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cmt-list{list-style:none;display:flex;flex-direction:column;gap:6px;margin:0 0 8px;padding:0}
+.cmt{
+  display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;
+  background:rgba(255,255,255,.28);border-radius:10px;padding:8px 10px;
+  font-size:13px;animation:cmt-in .35s var(--apple-ease);
+}
+.cmt b{font-weight:800}
+.cmt span{font-weight:600;overflow-wrap:anywhere}
+.cmt-del{background:none;border:none;color:rgba(255,255,255,.85);cursor:pointer;font-size:15px;padding:0 2px;line-height:1}
+.cmt-form{display:flex;gap:8px;margin-top:2px}
+.cmt-form input{
+  flex:1;min-width:0;border:1px solid rgba(255,255,255,.5);border-radius:10px;
+  padding:8px 10px;font-size:14px;background:rgba(255,255,255,.25);color:#fff;font-weight:600;
+}
+.cmt-form input::placeholder{color:rgba(255,255,255,.65);font-weight:400}
+.cmt-form .btn{background:#fff;color:#d14e7e;border:none;font-weight:800;flex-shrink:0}
+.cmt-login{margin:6px 0 0}
+.cmt-login a{color:#fff;font-weight:800}
+@keyframes cmt-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+
+/* ---- 后台：屏蔽词 ---- */
+.form-row-inline{display:flex;gap:8px;align-items:center}
+.form-row-inline input{
+  border:1px solid var(--border);border-radius:10px;padding:8px 10px;
+  background:var(--card2);color:var(--text);font-size:14px;
+}
+.word-tags{display:flex;flex-wrap:wrap;gap:8px}
+.word-tag{
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--card2);border:1px solid var(--border);
+  border-radius:999px;padding:5px 6px 5px 12px;font-size:13px;font-weight:600;
+}
+.word-del{background:none;border:none;color:var(--text2);cursor:pointer;font-size:15px;padding:0 5px;line-height:1}
+.word-del:hover{color:#e14b5a}
+@media (prefers-reduced-motion: reduce){
+  .cmt{animation:none}
+}

@@ -119,6 +119,26 @@ def main():
     d = r.get_json()
     check("AJAX 表白取消点赞 JSON", d["ok"] and d["liked"] is False and d["likes"] == 0)
 
+    print("== 评论区与屏蔽词 ==")
+    r = c.post("/confess/1/comment", data={"body": "祝福你们！", "csrf_token": t},
+               headers={"X-Requested-With": "XMLHttpRequest"})
+    d = r.get_json()
+    check("AJAX 评论成功", d["ok"] and d["comment"]["body"] == "祝福你们！")
+    r = c.get("/confess")
+    check("评论显示在卡片下", "祝福你们！" in r.get_data(as_text=True))
+    r = c.post("/confess/1/comment", data={"body": "你这个傻逼", "csrf_token": t},
+               headers={"X-Requested-With": "XMLHttpRequest"})
+    d = r.get_json()
+    check("评论屏蔽词被拦截", not d["ok"] and "屏蔽词" in d["error"])
+    r = c.post("/confess/new", data={"kind": "表白", "target": "小王",
+                                     "body": "你这个傻逼", "csrf_token": t},
+               follow_redirects=True)
+    check("表白屏蔽词被拦截", "屏蔽词" in r.get_data(as_text=True))
+    r = c.post("/forum/new", data={"title": "正常标题", "category": "学习",
+                                   "body": "这篇正文很正常没有问题",
+                                   "csrf_token": t}, follow_redirects=True)
+    check("正常发帖不受影响", "发帖成功" in r.get_data(as_text=True) or "正常标题" in r.get_data(as_text=True))
+
     print("== 评选报名（含照片） ==")
     t = token(c, "/vote/signup")
     photo = (make_photo(), "me.png")
@@ -221,6 +241,17 @@ def main():
     r = c.post(f"/admin/feedback/{m.group(1)}/handle", data={"csrf_token": t},
                follow_redirects=True)
     check("反馈标为已处理", "已处理" in r.get_data(as_text=True))
+    t = token(c, "/admin")
+    r = c.post("/admin/blocked-words", data={"word": "测试屏蔽词", "csrf_token": t},
+               follow_redirects=True)
+    check("后台添加屏蔽词", "测试屏蔽词" in r.get_data(as_text=True))
+    import re as _re2
+    m2 = _re2.search(r"测试屏蔽词\s*<form action=\"/admin/delete/blockedword/(\d+)\"",
+                     r.get_data(as_text=True), _re2.S)
+    check("找到测试屏蔽词的删除链接", m2 is not None)
+    r = c.post(f"/admin/delete/blockedword/{m2.group(1)}",
+               data={"csrf_token": t}, follow_redirects=True)
+    check("后台删除屏蔽词", "测试屏蔽词" not in r.get_data(as_text=True))
 
     print("== 公告投票 ==")
     t = token(c, "/admin")
@@ -303,7 +334,8 @@ def main():
     dump = _json.loads(r.get_data(as_text=True))
     check("备份含全部表", set(["users", "forum_posts", "confessions",
                              "candidates", "votes", "feedbacks",
-                             "polls", "poll_options", "poll_votes"]) <= set(dump["tables"].keys()))
+                             "polls", "poll_options", "poll_votes",
+                             "confession_comments", "blocked_words"]) <= set(dump["tables"].keys()))
     check("备份含反馈数据", any(f["body"] == "希望增加暗色模式"
                              for f in dump["tables"]["feedbacks"]))
     c2 = appmod.app.test_client()

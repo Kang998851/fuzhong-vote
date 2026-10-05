@@ -43,10 +43,37 @@
       <span>— {{ c.nickname or '匿名' }}</span>
       <span class="dim">{{ c.created_at[:16] }}</span>
     </div>
-    <form action="{{ url_for('confess_like', cid=c.id, sort=sort) }}" method="post" class="inline-form js-like">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-outline btn-sm js-like-btn{{ ' is-liked' if c.id in liked_ids else '' }}" type="submit"><span class="heart">{{ '♥' if c.id in liked_ids else '♡' }}</span> <span class="like-count">{{ c.likes }}</span></button>
-    </form>
+    <div class="confess-actions">
+      <form action="{{ url_for('confess_like', cid=c.id, sort=sort) }}" method="post" class="inline-form js-like">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-outline btn-sm js-like-btn{{ ' is-liked' if c.id in liked_ids else '' }}" type="submit"><span class="heart">{{ '♥' if c.id in liked_ids else '♡' }}</span> <span class="like-count">{{ c.likes }}</span></button>
+      </form>
+      {% set clist = comments.get(c.id, []) %}
+      <button type="button" class="btn btn-outline btn-sm js-cmt-toggle" data-target="cmt-{{ c.id }}">💬 <span data-cmt-count>{{ clist|length }}</span></button>
+    </div>
+    <div class="confess-comments" id="cmt-{{ c.id }}" hidden>
+      <ul class="cmt-list" data-cmt-list>
+        {% for m in clist %}
+        <li class="cmt"><b>{{ m.nickname or '匿名' }}</b><span>{{ m.body }}</span>
+          {% if is_admin %}
+          <form action="{{ url_for('admin_delete', kind='comment', oid=m.id) }}" method="post" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="cmt-del" title="删除评论">×</button>
+          </form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% if me %}
+      <form action="{{ url_for('confess_comment', cid=c.id) }}" method="post" class="cmt-form js-comment" data-cid="{{ c.id }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="body" required maxlength="200" placeholder="写下评论…" autocomplete="off">
+        <button class="btn btn-sm" type="submit">发送</button>
+      </form>
+      {% else %}
+      <p class="dim cmt-login"><a href="{{ url_for('login', next=request.path) }}">登录</a>后参与评论</p>
+      {% endif %}
+    </div>
   </article>
   {% endfor %}
 </div>

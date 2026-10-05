@@ -250,4 +250,32 @@
       paintPoll(form.closest('[data-poll]'), data);
     });
   });
+
+  // 表白评论：展开/收起 + 无刷新发表
+  document.querySelectorAll('.js-cmt-toggle').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var box = document.getElementById(btn.dataset.target);
+      if (box) box.hidden = !box.hidden;
+    });
+  });
+  document.querySelectorAll('form.js-comment').forEach(function (form) {
+    ajaxify(form, function (data) {
+      var wrap = form.closest('.confess-comments');
+      var list = wrap.querySelector('[data-cmt-list]');
+      var li = document.createElement('li');
+      li.className = 'cmt';
+      var b = document.createElement('b');
+      b.textContent = data.comment.nickname;
+      var s = document.createElement('span');
+      s.textContent = data.comment.body;
+      li.appendChild(b);
+      li.appendChild(s);
+      list.appendChild(li);
+      form.querySelector('input[name=body]').value = '';
+      wrap.hidden = false;
+      var card = form.closest('.confess-card');
+      var count = card.querySelector('[data-cmt-count]');
+      if (count) animateCount(count, (parseInt(count.textContent, 10) || 0) + 1);
+    });
+  });
 })();
