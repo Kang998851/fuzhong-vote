@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS polls(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     announcement_id INTEGER NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
     question TEXT NOT NULL,
+    is_closed INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS poll_options(
@@ -329,6 +330,18 @@ def init_db():
         if not exists:
             db.execute(f"ALTER TABLE confessions ADD COLUMN {col} TEXT")
             db.execute(f"UPDATE confessions SET {col}={default} WHERE {col} IS NULL")
+    # 存量库补列：投票加 is_closed（管理员关闭投票）
+    if USE_PG:
+        _exists = db.execute(
+            "SELECT 1 FROM information_schema.columns"
+            " WHERE table_name=? AND column_name=?",
+            ("polls", "is_closed")).fetchone()
+    else:
+        _exists = any(r["name"] == "is_closed"
+                      for r in db.execute("PRAGMA table_info(polls)").fetchall())
+    if not _exists:
+        db.execute("ALTER TABLE polls ADD COLUMN is_closed INTEGER")
+        db.execute("UPDATE polls SET is_closed=0 WHERE is_closed IS NULL")
     # 播种默认屏蔽词（已存在的跳过）
     for w in DEFAULT_BLOCKED_WORDS:
         if USE_PG:
@@ -518,7 +531,8 @@ def index():
                            (p["id"], me["id"])).fetchone()
             my_opt = r["option_id"] if r else None
         polls[a["id"]] = {"id": p["id"], "question": p["question"],
-                          "my_option": my_opt, **res}
+                          "my_option": my_opt, "is_closed": bool(p["is_closed"]),
+                          **res}
     return render_template("index.html", announcements=announcements,
                            posts=posts, confesses=confesses, tops=tops,
                            polls=polls)
@@ -777,6 +791,11 @@ def poll_vote(poll_id):
             return jsonify(ok=False, error="投票不存在"), 404
         flash("投票不存在", "error")
         return redirect(url_for("index"))
+    if poll["is_closed"]:
+        if wants_json():
+            return jsonify(ok=False, error="投票已结束"), 400
+        flash("投票已结束", "error")
+        return redirect(url_for("index"))
     oid = request.form.get("option_id", type=int)
     opt = db.execute("SELECT id FROM poll_options WHERE id=? AND poll_id=?",
                      (oid, poll_id)).fetchone()
@@ -796,7 +815,8 @@ def poll_vote(poll_id):
         db.commit()
     if wants_json():
         res = poll_result(db, poll_id)
-        res.update(ok=True, poll_id=poll_id, option_id=oid)
+        res.update(ok=True, poll_id=poll_id, option_id=oid,
+                   is_closed=bool(poll["is_closed"]))
         return jsonify(res)
     flash("投票成功", "ok")
     return redirect(url_for("index"))
@@ -1029,7 +1049,10 @@ def admin():
            ORDER BY votes DESC, c.id LIMIT 5""",
         (code,)).fetchall() for code, _ in BOARDS}
     announcements = db.execute(
-        "SELECT * FROM announcements ORDER BY id DESC").fetchall()
+        """SELECT a.*, p.id AS poll_id, p.question AS poll_question,
+                  p.is_closed AS poll_closed
+           FROM announcements a LEFT JOIN polls p ON p.announcement_id=a.id
+           ORDER BY a.id DESC""").fetchall()
     users = db.execute(
         "SELECT id, username, is_admin, created_at FROM users ORDER BY id").fetchall()
     feedbacks = db.execute(
@@ -1063,6 +1086,20 @@ def admin_blocked_word_add():
                        " VALUES(?,?)", (word, now_str()))
         db.commit()
         flash(f"已添加屏蔽词：{word}", "ok")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/poll/<int:pid>/toggle", methods=["POST"])
+@admin_required
+def admin_poll_toggle(pid):
+    db = get_db()
+    p = db.execute("SELECT is_closed FROM polls WHERE id=?", (pid,)).fetchone()
+    if not p:
+        abort(404)
+    db.execute("UPDATE polls SET is_closed=? WHERE id=?",
+               (0 if p["is_closed"] else 1, pid))
+    db.commit()
+    flash("投票已重新开启" if p["is_closed"] else "投票已关闭", "ok")
     return redirect(url_for("admin"))
 
 

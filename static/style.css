@@ -347,3 +347,10 @@ a:hover{text-decoration:underline}
 @media (prefers-reduced-motion: reduce){
   .cmt{animation:none}
 }
+
+/* ---- 投票已结束 ---- */
+.poll-closed{
+  font-size:11px;font-weight:700;color:#fff;background:#8a94a6;
+  padding:2px 8px;border-radius:999px;vertical-align:2px;white-space:nowrap;
+}
+.poll[data-closed="1"] .poll-opt{opacity:.75}

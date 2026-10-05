@@ -113,6 +113,14 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-xs" onclick="return confirm('确定删除？')">删除</button>
       </form>
+      {% if a.poll_id %}
+      <div class="dim" style="margin-top:4px">🗳 {{ a.poll_question }} · {{ '已关闭' if a.poll_closed else '进行中' }}
+        <form action="{{ url_for('admin_poll_toggle', pid=a.poll_id) }}" method="post" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-xs">{{ '重新开启' if a.poll_closed else '关闭投票' }}</button>
+        </form>
+      </div>
+      {% endif %}
     </li>
     {% endfor %}
   </ul>

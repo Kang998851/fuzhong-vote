@@ -54,14 +54,14 @@
       <li><span class="dim">{{ a.created_at[:10] }}</span><b>{{ a.title }}</b><p class="dim">{{ a.body }}</p>
         {% set poll = polls.get(a.id) %}
         {% if poll %}
-        <div class="poll" data-poll data-poll-id="{{ poll.id }}">
-          <div class="poll-q">🗳 {{ poll.question }}</div>
+        <div class="poll" data-poll data-poll-id="{{ poll.id }}" data-closed="{{ 1 if poll.is_closed else 0 }}">
+          <div class="poll-q">🗳 {{ poll.question }}{% if poll.is_closed %} <span class="poll-closed">已结束</span>{% endif %}</div>
           <div class="poll-opts">
             {% for o in poll.options %}
             <form action="{{ url_for('poll_vote', poll_id=poll.id) }}" method="post" class="js-poll-opt" data-oid="{{ o.id }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="option_id" value="{{ o.id }}">
-              <button type="submit" class="poll-opt{{ ' mine' if poll.my_option == o.id else '' }}"{{ ' disabled' if not me or poll.my_option == o.id }}>
+              <button type="submit" class="poll-opt{{ ' mine' if poll.my_option == o.id else '' }}"{{ ' disabled' if not me or poll.my_option == o.id or poll.is_closed }}>
                 <span class="poll-track"><i class="poll-fill" style="width:{{ o.pct }}%"></i></span>
                 <span class="poll-opt-text">{{ o.text }}</span>
                 <span class="poll-meta"><span class="vote-num">{{ o.votes }}</span> 票 · <span class="poll-pct">{{ o.pct }}</span>%</span>
@@ -69,7 +69,7 @@
             </form>
             {% endfor %}
           </div>
-          <div class="poll-foot dim" data-foot>{{ poll.total }} 人参与{% if poll.my_option %} · 你已投票，可改投{% elif not me %} · <a href="{{ url_for('login', next=request.path) }}">登录投票</a>{% endif %}</div>
+          <div class="poll-foot dim" data-foot>{{ poll.total }} 人参与{% if poll.is_closed %} · 投票已结束{% elif poll.my_option %} · 你已投票，可改投{% elif not me %} · <a href="{{ url_for('login', next=request.path) }}">登录投票</a>{% endif %}</div>
         </div>
         {% endif %}
       </li>

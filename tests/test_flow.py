@@ -310,6 +310,29 @@ def main():
                headers={"X-Requested-With": "XMLHttpRequest"})
     d = r.get_json()
     check("两人投票总数 2", d["total"] == 2 and d["options"][0]["pct"] == 50)
+    # 管理员关闭投票
+    t = token(c, "/admin")
+    r = c.post(f"/admin/poll/{pid}/toggle", data={"csrf_token": t},
+               follow_redirects=True)
+    check("关闭投票", "投票已关闭" in r.get_data(as_text=True))
+    r = c.get("/admin")
+    check("后台显示已关闭", "已关闭" in r.get_data(as_text=True))
+    t = token(c, "/")
+    r = c.post(f"/poll/{pid}/vote", data={"option_id": str(oid2), "csrf_token": t},
+               headers={"X-Requested-With": "XMLHttpRequest"})
+    d = r.get_json()
+    check("关闭后投票被拒绝", not d["ok"] and "已结束" in d["error"])
+    r = c.get("/")
+    check("首页显示投票已结束", "投票已结束" in r.get_data(as_text=True))
+    # 重新开启
+    t = token(c, "/admin")
+    r = c.post(f"/admin/poll/{pid}/toggle", data={"csrf_token": t},
+               follow_redirects=True)
+    check("重新开启投票", "重新开启" in r.get_data(as_text=True))
+    t = token(c, "/")
+    r = c.post(f"/poll/{pid}/vote", data={"option_id": str(oid2), "csrf_token": t},
+               headers={"X-Requested-With": "XMLHttpRequest"})
+    check("重开后可投票", r.get_json()["ok"])
     # 删除公告级联删除投票
     _db = _s3.connect(os.path.join(tmp, "test.db"))
     _aid = _db.execute("SELECT id FROM announcements WHERE title='周末活动投票'").fetchone()[0]
