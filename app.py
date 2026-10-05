@@ -857,6 +857,9 @@ def admin_backup():
 RESTORE_ORDER = ["users", "announcements", "forum_posts", "forum_replies",
                  "post_likes", "confessions", "confession_likes",
                  "candidates", "votes", "feedbacks"]
+# 只有这些表有 id 自增列（关联表 post_likes / confession_likes 没有 id）
+ID_TABLES = ["users", "announcements", "forum_posts", "forum_replies",
+             "confessions", "candidates", "votes", "feedbacks"]
 
 
 def restore_dump(dump):
@@ -885,9 +888,10 @@ def restore_dump(dump):
             total += 1
     if USE_PG:
         for t in present:
-            db.execute(
-                "SELECT setval(pg_get_serial_sequence(?, 'id'),"
-                " (SELECT COALESCE(MAX(id), 1) FROM %s))" % t, (t,))
+            if t in ID_TABLES:
+                db.execute(
+                    "SELECT setval(pg_get_serial_sequence(?, 'id'),"
+                    " (SELECT COALESCE(MAX(id), 1) FROM %s))" % t, (t,))
     db.commit()
     return total
 

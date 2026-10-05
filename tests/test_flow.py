@@ -218,6 +218,15 @@ def main():
     r = c.get("/vote?board=xiaohua")
     check("恢复后候选人仍在", "测试候选人" in r.get_data(as_text=True))
 
+    print("== 恢复逻辑一致性 ==")
+    import re as _re
+    _blocks = _re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)\((.*?)\);",
+                          appmod.SCHEMA, _re.S)
+    _with_id = {n for n, b in _blocks
+                if _re.search(r"^\s*id INTEGER PRIMARY KEY", b, _re.M)}
+    check("ID_TABLES 与表结构一致",
+          set(appmod.ID_TABLES) == (_with_id & set(appmod.RESTORE_ORDER)))
+
     print(f"\n全部通过：{len(passed)} 项 ✓")
 
 
