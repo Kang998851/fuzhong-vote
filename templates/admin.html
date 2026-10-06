@@ -67,6 +67,14 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-xs">刷新属地</button>
       </form>
+      {% if g.suspicious %}
+      <form action="{{ url_for('admin_purge_group') }}" method="post" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="kind" value="ip">
+        <input type="hidden" name="key" value="{{ g.ip }}">
+        <button class="btn btn-xs" onclick="return confirm('确定一键清除该 IP 下 {{ g.accounts|length }} 个账号的全部投票？账号保留。')">一键清除</button>
+      </form>
+      {% endif %}
       <ul class="dim">
         {% for a in g.accounts %}
         <li>{{ a.username }}{% if a.is_admin %}（管理员）{% endif %} · 注册 {{ a.created_at[:16] if a.created_at else '' }}
@@ -98,6 +106,12 @@
       <b>设备 {{ g.device[:12] }}…</b>
       <span class="dim">属地 {{ g.region or '未知' }}</span>
       <span class="dim">{{ g.accounts|length }} 个账号 / {{ g.votes }} 票</span>
+      <form action="{{ url_for('admin_purge_group') }}" method="post" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="kind" value="device">
+        <input type="hidden" name="key" value="{{ g.device }}">
+        <button class="btn btn-xs" onclick="return confirm('确定一键清除该设备 {{ g.accounts|length }} 个账号的全部投票？账号保留。')">一键清除</button>
+      </form>
       <ul class="dim">
         {% for a in g.accounts %}
         <li>{{ a.username }}{% if a.is_admin %}（管理员）{% endif %} · 注册 {{ a.created_at[:16] if a.created_at else '' }} · IP {{ a.reg_ip }}
