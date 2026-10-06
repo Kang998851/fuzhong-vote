@@ -42,6 +42,7 @@
     {% for u in users %}
     <li>{{ u.username }}{% if u.is_admin %} <span class="dim">（管理员）</span>{% endif %}
       <span class="dim">{{ u.created_at[:16] if u.created_at else '' }}</span>
+      {% if u.phone %}<span class="dim">{{ u.phone }}</span>{% endif %}
       <form action="{{ url_for('admin_reset_password', uid=u.id) }}" method="post" class="inline-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-xs" onclick="return confirm('确定重置该用户的密码？将生成临时密码并显示一次。')">重置密码</button>

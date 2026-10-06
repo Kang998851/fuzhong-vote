@@ -5,12 +5,53 @@
 <section class="card narrow">
   <div class="card-label">/ ACCOUNT</div>
   <h2 class="card-title">{{ '注册账号' if mode=='register' else '登录' }}</h2>
-  <form method="post" class="form">
+  <form method="post" class="form" id="registerForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>用户名<input type="text" name="username" required minlength="2" maxlength="20" placeholder="2-20 个字符"></label>
     <label>密码<input type="password" name="password" required minlength="4" placeholder="至少 4 位"></label>
+    {% if mode=='register' %}
+    <label>手机号<input type="tel" name="phone" id="phoneInput" required maxlength="11"
+      placeholder="11 位手机号，一个号只能注册一次" pattern="1[3-9][0-9]{9}" inputmode="numeric"></label>
+    <label>短信验证码
+      <span class="sms-row">
+        <input type="text" name="sms_code" required maxlength="6" placeholder="6 位数字"
+          pattern="[0-9]{6}" inputmode="numeric" style="flex:1">
+        <button type="button" class="btn btn-outline btn-sm" id="smsBtn">获取验证码</button>
+      </span>
+    </label>
+    {% endif %}
     <button class="btn btn-primary" type="submit">{{ '注册' if mode=='register' else '登录' }}</button>
   </form>
+{% if mode=='register' %}
+<script>
+(function () {
+  var btn = document.getElementById('smsBtn');
+  var phone = document.getElementById('phoneInput');
+  var left = 0, timer = null;
+  function tick() {
+    if (left <= 0) { btn.disabled = false; btn.textContent = '获取验证码'; return; }
+    btn.disabled = true; btn.textContent = left + 's 后重发';
+    left--; timer = setTimeout(tick, 1000);
+  }
+  btn.addEventListener('click', function () {
+    var p = (phone.value || '').trim();
+    if (!/^1[3-9]\d{9}$/.test(p)) { alert('请先填写正确的手机号'); phone.focus(); return; }
+    btn.disabled = true; btn.textContent = '发送中…';
+    var fd = new FormData();
+    fd.append('phone', p);
+    var csrf = document.querySelector('#registerForm input[name=csrf_token]');
+    if (csrf) fd.append('csrf_token', csrf.value);
+    fetch('{{ url_for('sms_send') }}', { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.ok) { left = 60; tick(); }
+        else { alert(d.error || '发送失败'); btn.disabled = false; btn.textContent = '获取验证码'; }
+      })
+      .catch(function () { alert('网络异常，请重试'); btn.disabled = false; btn.textContent = '获取验证码'; });
+  });
+})();
+</script>
+{% endif %}
   <p class="dim center" style="margin-top:14px">
     {% if mode=='register' %}已有账号？<a href="{{ url_for('login') }}">去登录</a>
     {% else %}没有账号？<a href="{{ url_for('register') }}">去注册</a>{% endif %}
