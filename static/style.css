@@ -391,8 +391,3 @@ a:hover{text-decoration:underline}
 @media (prefers-reduced-motion: reduce){
   .achieve-card,.achieve-crown{animation:none}
 }
-
-/* ---- 短信验证码 ---- */
-.sms-row{display:flex;gap:8px;align-items:center}
-.sms-row .btn{white-space:nowrap}
-.sms-row .btn:disabled{opacity:.55}
