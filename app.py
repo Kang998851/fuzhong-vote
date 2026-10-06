@@ -10,7 +10,7 @@ import json
 import re
 import sqlite3
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from zoneinfo import ZoneInfo
 from functools import wraps
@@ -61,8 +61,10 @@ CREATE TABLE IF NOT EXISTS users(
     is_admin INTEGER NOT NULL DEFAULT 0,
     reg_ip TEXT NOT NULL DEFAULT '',
     reg_device TEXT NOT NULL DEFAULT '',
+    phone TEXT,
     created_at TEXT NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
 CREATE TABLE IF NOT EXISTS announcements(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -173,6 +175,15 @@ CREATE TABLE IF NOT EXISTS achievements(
     seen INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(user_id, board)
 );
+CREATE TABLE IF NOT EXISTS sms_codes(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone TEXT NOT NULL,
+    code TEXT NOT NULL,
+    ip TEXT NOT NULL DEFAULT '',
+    used INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sms_codes_phone ON sms_codes(phone);
 CREATE TABLE IF NOT EXISTS feedbacks(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -388,6 +399,18 @@ def init_db():
                       for r in db.execute(f"PRAGMA table_info({_table})").fetchall())
         if not _ex:
             db.execute(f"ALTER TABLE {_table} ADD COLUMN {_col} TEXT NOT NULL DEFAULT ''")
+    # 存量库补列：手机号（可空，唯一索引允许多个 NULL）
+    if USE_PG:
+        _ex = db.execute("SELECT 1 FROM information_schema.columns"
+                         " WHERE table_name=? AND column_name=?",
+                         ("users", "phone")).fetchone()
+    else:
+        _ex = any(r["name"] == "phone"
+                  for r in db.execute("PRAGMA table_info(users)").fetchall())
+    if not _ex:
+        db.execute("ALTER TABLE users ADD COLUMN phone TEXT")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_sms_codes_phone ON sms_codes(phone)")
     # 播种默认屏蔽词（已存在的跳过）
     for w in DEFAULT_BLOCKED_WORDS:
         if USE_PG:
@@ -440,6 +463,109 @@ def max_reg_per_ip():
         return max(1, int(os.environ.get("MAX_REG_PER_IP", "1")))
     except ValueError:
         return 1
+
+
+# ---------- 短信验证码 ----------
+PHONE_RE = re.compile(r"^1[3-9]\d{9}$")
+SMS_CODE_TTL = 10 * 60  # 验证码 10 分钟有效
+
+
+def sms_provider():
+    return os.environ.get("SMS_PROVIDER", "log")  # log | aliyun
+
+
+def _send_sms_aliyun(phone, code):
+    """阿里云短信（无 SDK，urllib + HMAC-SHA1 直调）。
+    需要环境变量：ALIYUN_KEY_ID / ALIYUN_KEY_SECRET / ALIYUN_SMS_SIGN / ALIYUN_SMS_TEMPLATE。
+    模板变量为 ${code}。"""
+    import hmac
+    import hashlib
+    import base64 as _b64
+    import urllib.parse
+    import urllib.request
+    import uuid as _uuid
+    key_id = os.environ.get("ALIYUN_KEY_ID", "")
+    key_secret = os.environ.get("ALIYUN_KEY_SECRET", "")
+    sign = os.environ.get("ALIYUN_SMS_SIGN", "")
+    template = os.environ.get("ALIYUN_SMS_TEMPLATE", "")
+    if not (key_id and key_secret and sign and template):
+        raise RuntimeError("阿里云短信环境变量未配置全")
+    params = {
+        "AccessKeyId": key_id,
+        "Action": "SendSms",
+        "Format": "JSON",
+        "PhoneNumbers": phone,
+        "RegionId": "cn-hangzhou",
+        "SignName": sign,
+        "SignatureMethod": "HMAC-SHA1",
+        "SignatureNonce": _uuid.uuid4().hex,
+        "SignatureVersion": "1.0",
+        "TemplateCode": template,
+        "TemplateParam": json.dumps({"code": code}, ensure_ascii=False),
+        "Timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "Version": "2017-05-25",
+    }
+    query = "&".join(f"{urllib.parse.quote(k, safe='')}="
+                     f"{urllib.parse.quote(str(v), safe='')}"
+                     for k, v in sorted(params.items()))
+    string_to_sign = "GET&" + urllib.parse.quote("/", safe="") + "&" + \
+        urllib.parse.quote(query, safe="")
+    sig = _b64.b64encode(hmac.new((key_secret + "&").encode(),
+                                  string_to_sign.encode(),
+                                  hashlib.sha1).digest()).decode()
+    url = "https://dysmsapi.aliyuncs.com/?" + query + "&Signature=" + \
+        urllib.parse.quote(sig, safe="")
+    req = urllib.request.Request(url, headers={"User-Agent": "fuzhong-wall"})
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        data = json.loads(resp.read().decode("utf-8", "ignore"))
+    if data.get("Code") != "OK":
+        raise RuntimeError(f"阿里云短信发送失败: {data.get('Code')} {data.get('Message')}")
+
+
+def send_sms_code(phone, code):
+    """发送短信验证码。log 模式只记日志（申请网关前用于测试流程）。"""
+    if sms_provider() == "aliyun":
+        _send_sms_aliyun(phone, code)
+    else:
+        app.logger.info("[SMS-LOG] %s 的验证码: %s", phone, code)
+
+
+def sms_send_allowed(db, phone, ip):
+    """短信限频：防刷短信烧钱。返回 (ok, 提示)。"""
+    now = datetime.now(TZ)
+    fmt = "%Y-%m-%d %H:%M:%S"
+    s1m = (now - timedelta(minutes=1)).strftime(fmt)
+    s1d = (now - timedelta(days=1)).strftime(fmt)
+    c1 = db.execute("SELECT COUNT(*) c FROM sms_codes WHERE phone=? AND created_at>=?",
+                    (phone, s1m)).fetchone()["c"]
+    if c1:
+        return False, "发送太频繁，请 1 分钟后再试"
+    c2 = db.execute("SELECT COUNT(*) c FROM sms_codes WHERE phone=? AND created_at>=?",
+                    (phone, s1d)).fetchone()["c"]
+    if c2 >= 5:
+        return False, "该手机号今日发送次数已达上限"
+    c3 = db.execute("SELECT COUNT(*) c FROM sms_codes WHERE ip=? AND created_at>=?",
+                    (ip, s1d)).fetchone()["c"]
+    if c3 >= 20:
+        return False, "该网络今日发送次数已达上限"
+    return True, ""
+
+
+def verify_sms_code(db, phone, code):
+    """校验验证码：存在、未使用、10 分钟内。成功则标记已用。"""
+    r = db.execute(
+        "SELECT * FROM sms_codes WHERE phone=? AND code=? AND used=0"
+        " ORDER BY id DESC LIMIT 1", (phone, code)).fetchone()
+    if not r:
+        return False
+    try:
+        ts = datetime.strptime(r["created_at"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=TZ)
+    except Exception:
+        return False
+    if (datetime.now(TZ) - ts).total_seconds() > SMS_CODE_TTL:
+        return False
+    db.execute("UPDATE sms_codes SET used=1 WHERE id=?", (r["id"],))
+    return True
 
 
 def ip_region(ip, refresh=False):
@@ -594,19 +720,51 @@ def logo_full_img():
 
 
 # ---------- 账号 ----------
+@app.route("/sms/send", methods=["POST"])
+def sms_send():
+    """发送手机验证码（AJAX）。限频防刷，失败不抛 500 给前端看。"""
+    phone = (request.form.get("phone") or "").strip()
+    db = get_db()
+    if not PHONE_RE.match(phone):
+        return jsonify(ok=False, error="手机号格式不正确"), 400
+    if db.execute("SELECT id FROM users WHERE phone=?", (phone,)).fetchone():
+        return jsonify(ok=False, error="该手机号已注册过账号"), 400
+    ok, msg = sms_send_allowed(db, phone, client_ip())
+    if not ok:
+        return jsonify(ok=False, error=msg), 429
+    code = str(secrets.randbelow(900000) + 100000)
+    db.execute("INSERT INTO sms_codes(phone, code, ip, created_at) VALUES(?,?,?,?)",
+               (phone, code, client_ip(), now_str()))
+    db.commit()
+    try:
+        send_sms_code(phone, code)
+    except Exception as e:
+        app.logger.warning("短信发送失败 %s: %s", phone, e)
+        return jsonify(ok=False, error="发送失败，请稍后再试"), 500
+    return jsonify(ok=True)
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        phone = (request.form.get("phone") or "").strip()
+        sms_code = (request.form.get("sms_code") or "").strip()
         if not (2 <= len(username) <= 20):
             flash("用户名长度需为 2-20 个字符", "error")
         elif len(password) < 4:
             flash("密码至少 4 位", "error")
+        elif not PHONE_RE.match(phone):
+            flash("手机号格式不正确", "error")
+        elif not (sms_code.isdigit() and len(sms_code) == 6):
+            flash("验证码为 6 位数字", "error")
         else:
             db = get_db()
             if db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone():
                 flash("用户名已存在", "error")
+            elif db.execute("SELECT id FROM users WHERE phone=?", (phone,)).fetchone():
+                flash("该手机号已注册过账号", "error")
             else:
                 ip = client_ip()
                 limit = max_reg_per_ip()
@@ -616,13 +774,15 @@ def register():
                 if used >= limit:
                     flash("该 IP 已注册过账号（每 IP 限注册一个），如需帮助请联系管理员",
                           "error")
+                elif not verify_sms_code(db, phone, sms_code):
+                    flash("验证码不正确或已过期，请重新获取", "error")
                 else:
                     ip_region(ip)  # 注册时解析属地并缓存（失败则记"未知"，不阻塞注册）
                     cur = db.execute(
                         "INSERT INTO users(username, password_hash, reg_ip, reg_device,"
-                        " created_at) VALUES(?,?,?,?,?)",
+                        " phone, created_at) VALUES(?,?,?,?,?,?)",
                         (username, generate_password_hash(password), ip,
-                         request.cookies.get("did", "")[:64], now_str()))
+                         request.cookies.get("did", "")[:64], phone, now_str()))
                     db.commit()
                     session["user_id"] = cur.lastrowid
                     flash(f"欢迎，{username}！", "ok")
@@ -1252,7 +1412,7 @@ def admin():
            FROM announcements a LEFT JOIN polls p ON p.announcement_id=a.id
            ORDER BY a.id DESC""").fetchall()
     users = db.execute(
-        "SELECT id, username, is_admin, created_at FROM users ORDER BY id").fetchall()
+        "SELECT id, username, is_admin, phone, created_at FROM users ORDER BY id").fetchall()
     feedbacks = db.execute(
         """SELECT f.*, u.username FROM feedbacks f
            JOIN users u ON u.id=f.user_id

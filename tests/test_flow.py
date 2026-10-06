@@ -39,6 +39,28 @@ def token(client, path):
     return m.group(1)
 
 
+def sms_code_for(client, phone):
+    """走 /sms/send 获取验证码（log 模式，从库里读）。"""
+    t = token(client, "/register")
+    r = client.post("/sms/send", data={"phone": phone, "csrf_token": t})
+    d = r.get_json()
+    assert d and d["ok"], f"sms send failed: {d}"
+    db = sqlite3.connect(os.path.join(tmp, "test.db"))
+    code = db.execute("SELECT code FROM sms_codes WHERE phone=? ORDER BY id DESC LIMIT 1",
+                      (phone,)).fetchone()[0]
+    db.close()
+    return code
+
+
+def register_with_phone(client, username, password, phone):
+    code = sms_code_for(client, phone)
+    t = token(client, "/register")
+    return client.post("/register",
+                       data={"username": username, "password": password,
+                             "phone": phone, "sms_code": code, "csrf_token": t},
+                       follow_redirects=True)
+
+
 def make_photo():
     from PIL import Image
     buf = io.BytesIO()
@@ -54,9 +76,7 @@ def main():
     c = appmod.app.test_client()
 
     print("== 账号 ==")
-    t = token(c, "/register")
-    r = c.post("/register", data={"username": "tester", "password": "pw123456",
-                                  "csrf_token": t}, follow_redirects=True)
+    r = register_with_phone(c, "tester", "pw123456", "13800000001")
     check("注册成功", "欢迎，tester" in r.get_data(as_text=True))
     c.post("/logout", data={"csrf_token": token(c, "/")})
     t = token(c, "/login")
@@ -225,6 +245,8 @@ def main():
     check("反馈页需登录", anon.get("/feedback").status_code == 302)
     t = token(c, "/register")
     c.post("/register", data={"username": "fbuser", "password": "fbpass123",
+                              "phone": "13800000004",
+                              "sms_code": sms_code_for(c, "13800000004"),
                               "csrf_token": t})
     t = token(c, "/login")
     c.post("/login", data={"username": "fbuser", "password": "fbpass123",
@@ -248,9 +270,10 @@ def main():
     c.post("/logout", data={"csrf_token": token(c, "/")})
     # 注册两个小号，制造同 IP 多账号场景（同一设备指纹）
     c.set_cookie("did", "testdeviceABC")
-    for _u2 in ("brush1", "brush2"):
+    for _u2, _ph in (("brush1", "13800000002"), ("brush2", "13800000003")):
         t = token(c, "/register")
         c.post("/register", data={"username": _u2, "password": "pw123456",
+                                  "phone": _ph, "sms_code": sms_code_for(c, _ph),
                                   "csrf_token": t})
         c.post("/logout", data={"csrf_token": token(c, "/")})
     t = token(c, "/login")
@@ -321,6 +344,8 @@ def main():
     c.post("/logout", data={"csrf_token": token(c, "/")})
     t = token(c, "/register")
     r = c.post("/register", data={"username": "blocked1", "password": "pw123456",
+                                  "phone": "13800000009",
+                                  "sms_code": sms_code_for(c, "13800000009"),
                                   "csrf_token": t}, follow_redirects=True)
     check("同 IP 第二个注册被拒绝", "已注册过账号" in r.get_data(as_text=True))
     _db = sqlite3.connect(os.path.join(tmp, "test.db"))
@@ -328,6 +353,24 @@ def main():
     _db.close()
     check("被拒绝的账号未入库", _x is None)
     os.environ["MAX_REG_PER_IP"] = "99"
+
+    print("== 短信验证码 ==")
+    t = token(c, "/register")
+    r = c.post("/sms/send", data={"phone": "123", "csrf_token": t})
+    check("错误手机号被拒绝", r.status_code == 400
+          and "格式不正确" in r.get_json()["error"])
+    r = c.post("/sms/send", data={"phone": "13800000001", "csrf_token": t})
+    check("已注册手机号被拒绝", r.status_code == 400
+          and "已注册过" in r.get_json()["error"])
+    t = token(c, "/register")
+    r = c.post("/sms/send", data={"phone": "13800000009", "csrf_token": t})
+    check("1 分钟内重复发送被限频", r.status_code == 429
+          and "频繁" in r.get_json()["error"])
+    t = token(c, "/register")
+    r = c.post("/register", data={"username": "smsfail", "password": "pw123456",
+                                  "phone": "13800000010", "sms_code": "000000",
+                                  "csrf_token": t}, follow_redirects=True)
+    check("错误验证码注册被拒绝", "验证码不正确或已过期" in r.get_data(as_text=True))
     t = token(c, "/login")
     c.post("/login", data={"username": "admin", "password": "admin12345",
                            "csrf_token": t})
