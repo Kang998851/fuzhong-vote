@@ -434,6 +434,14 @@ def client_ip():
     return (request.remote_addr or "").strip()
 
 
+def max_reg_per_ip():
+    """每 IP 允许注册的最大账号数（防刷票）。默认 1，可用环境变量 MAX_REG_PER_IP 调整。"""
+    try:
+        return max(1, int(os.environ.get("MAX_REG_PER_IP", "1")))
+    except ValueError:
+        return 1
+
+
 def ip_region(ip, refresh=False):
     """IP 属地解析：本地缓存 → 在线接口 → 降级为"未知"。绝不抛异常、
     绝不在页面渲染热路径中调在线接口（渲染只读缓存）。"""
@@ -601,16 +609,24 @@ def register():
                 flash("用户名已存在", "error")
             else:
                 ip = client_ip()
-                ip_region(ip)  # 注册时解析属地并缓存（失败则记"未知"，不阻塞注册）
-                cur = db.execute(
-                    "INSERT INTO users(username, password_hash, reg_ip, reg_device,"
-                    " created_at) VALUES(?,?,?,?,?)",
-                    (username, generate_password_hash(password), ip,
-                     request.cookies.get("did", "")[:64], now_str()))
-                db.commit()
-                session["user_id"] = cur.lastrowid
-                flash(f"欢迎，{username}！", "ok")
-                return redirect(request.args.get("next") or url_for("index"))
+                limit = max_reg_per_ip()
+                used = db.execute(
+                    "SELECT COUNT(*) c FROM users WHERE reg_ip=? AND reg_ip<>''",
+                    (ip,)).fetchone()["c"] if ip else 0
+                if used >= limit:
+                    flash("该 IP 已注册过账号（每 IP 限注册一个），如需帮助请联系管理员",
+                          "error")
+                else:
+                    ip_region(ip)  # 注册时解析属地并缓存（失败则记"未知"，不阻塞注册）
+                    cur = db.execute(
+                        "INSERT INTO users(username, password_hash, reg_ip, reg_device,"
+                        " created_at) VALUES(?,?,?,?,?)",
+                        (username, generate_password_hash(password), ip,
+                         request.cookies.get("did", "")[:64], now_str()))
+                    db.commit()
+                    session["user_id"] = cur.lastrowid
+                    flash(f"欢迎，{username}！", "ok")
+                    return redirect(request.args.get("next") or url_for("index"))
     return render_template("auth.html", mode="register")
 
 

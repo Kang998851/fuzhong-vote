@@ -17,6 +17,7 @@ tmp = tempfile.mkdtemp(prefix="fzwall_test_")
 os.environ["SECRET_KEY"] = "test-secret"
 os.environ["DATABASE"] = os.path.join(tmp, "test.db")
 os.environ["UPLOAD_FOLDER"] = os.path.join(tmp, "uploads")
+os.environ["MAX_REG_PER_IP"] = "99"  # 测试需要注册多个同 IP 账号
 
 import app as appmod
 
@@ -315,6 +316,22 @@ def main():
     _a = _db.execute("SELECT COUNT(*) FROM users WHERE reg_device='testdeviceABC'").fetchone()[0]
     _db.close()
     check("整组投票已清除且账号保留", _n == 0 and _a == 2)
+    # IP 限流：每 IP 只允许注册 1 个
+    os.environ["MAX_REG_PER_IP"] = "1"
+    c.post("/logout", data={"csrf_token": token(c, "/")})
+    t = token(c, "/register")
+    r = c.post("/register", data={"username": "blocked1", "password": "pw123456",
+                                  "csrf_token": t}, follow_redirects=True)
+    check("同 IP 第二个注册被拒绝", "已注册过账号" in r.get_data(as_text=True))
+    _db = sqlite3.connect(os.path.join(tmp, "test.db"))
+    _x = _db.execute("SELECT id FROM users WHERE username='blocked1'").fetchone()
+    _db.close()
+    check("被拒绝的账号未入库", _x is None)
+    os.environ["MAX_REG_PER_IP"] = "99"
+    t = token(c, "/login")
+    c.post("/login", data={"username": "admin", "password": "admin12345",
+                           "csrf_token": t})
+    r = c.get("/admin")
     m = re.search(r"/admin/feedback/(\d+)/handle", r.get_data(as_text=True))
     check("反馈处理按钮存在", m is not None)
     t = token(c, "/admin")
