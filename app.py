@@ -1311,6 +1311,34 @@ def admin_purge_votes(uid):
     return redirect(url_for("admin"))
 
 
+@app.route("/admin/purge-group", methods=["POST"])
+@admin_required
+def admin_purge_group():
+    """一键清除异常账号组：清除同 IP / 同设备下所有非管理员账号的全部投票。
+    账号保留（删号不可逆，共用设备可能误伤）。"""
+    kind = request.form.get("kind", "")
+    key = request.form.get("key", "")
+    db = get_db()
+    if kind == "ip" and key:
+        users = db.execute("SELECT id FROM users WHERE reg_ip=? AND is_admin=0",
+                           (key,)).fetchall()
+    elif kind == "device" and key:
+        users = db.execute("SELECT id FROM users WHERE reg_device=? AND is_admin=0",
+                           (key,)).fetchall()
+    else:
+        abort(400)
+    ids = [u["id"] for u in users]
+    n = 0
+    if ids:
+        ph = ",".join("?" * len(ids))
+        n = db.execute(f"SELECT COUNT(*) c FROM votes WHERE user_id IN ({ph})",
+                       ids).fetchone()["c"]
+        db.execute(f"DELETE FROM votes WHERE user_id IN ({ph})", ids)
+        db.commit()
+    flash(f"已清除 {len(ids)} 个账号的 {n} 张投票", "ok")
+    return redirect(url_for("admin"))
+
+
 @app.route("/admin/refresh-geo/<path:ip>", methods=["POST"])
 @admin_required
 def admin_refresh_geo(ip):

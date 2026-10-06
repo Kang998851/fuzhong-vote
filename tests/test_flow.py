@@ -294,6 +294,27 @@ def main():
                      (_brush,)).fetchone()[0]
     _db.close()
     check("刷票已清除", _n == 0)
+    # 一键清除异常账号组：brush2 投一票，按设备一键清除整组
+    c.post("/logout", data={"csrf_token": token(c, "/")})
+    t = token(c, "/login")
+    c.post("/login", data={"username": "brush2", "password": "pw123456",
+                           "csrf_token": t})
+    t = token(c, "/vote?board=xiaohua")
+    c.post("/vote/cast", data={"candidate_id": "2", "csrf_token": t})
+    c.post("/logout", data={"csrf_token": token(c, "/")})
+    t = token(c, "/login")
+    c.post("/login", data={"username": "admin", "password": "admin12345",
+                           "csrf_token": t})
+    t = token(c, "/admin")
+    r = c.post("/admin/purge-group", data={"kind": "device", "key": "testdeviceABC",
+                                           "csrf_token": t}, follow_redirects=True)
+    check("一键清除异常组", "已清除 2 个账号的 1 张投票" in r.get_data(as_text=True))
+    _db = sqlite3.connect(os.path.join(tmp, "test.db"))
+    _n = _db.execute("SELECT COUNT(*) FROM votes WHERE user_id IN"
+                     " (SELECT id FROM users WHERE reg_device='testdeviceABC')").fetchone()[0]
+    _a = _db.execute("SELECT COUNT(*) FROM users WHERE reg_device='testdeviceABC'").fetchone()[0]
+    _db.close()
+    check("整组投票已清除且账号保留", _n == 0 and _a == 2)
     m = re.search(r"/admin/feedback/(\d+)/handle", r.get_data(as_text=True))
     check("反馈处理按钮存在", m is not None)
     t = token(c, "/admin")
